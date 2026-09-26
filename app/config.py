@@ -38,6 +38,7 @@ class Settings:
     max_filtered_items: int = int(os.getenv('MAX_FILTERED_ITEMS', '72'))
     max_output_items: int = int(os.getenv('MAX_OUTPUT_ITEMS', '24'))
     request_timeout_seconds: float = float(os.getenv('REQUEST_TIMEOUT_SECONDS', '20'))
+    llm_timeout_seconds: float = float(os.getenv('LLM_TIMEOUT_SECONDS', '90'))
     source_concurrency: int = int(os.getenv('SOURCE_CONCURRENCY', '12'))
     source_config: dict = field(default_factory=dict)
 

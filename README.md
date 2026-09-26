@@ -138,15 +138,20 @@ uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000`.
 
-An LLM is optional. Configure any OpenAI-compatible endpoint in `.env`:
+The local configuration uses `gpt-6-luna` through the Responses endpoint exposed by
+`llm-gateway`'s Agent listener. The listener address is defined by
+`llm-gateway/config/gateway.json`; update `OPENAI_BASE_URL` in `.env` if that
+checkout uses a different host or port:
 
 ```bash
-OPENAI_API_KEY=...
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=...
+OPENAI_API_KEY=local-gateway
+OPENAI_BASE_URL=http://127.0.0.1:4101/v1
+OPENAI_MODEL=gpt-6-luna
+LLM_TIMEOUT_SECONDS=90
 ```
 
-Without it, source routing and ranking use deterministic fallbacks.
+The client uses `/responses` and reads streamed text output. Without model
+configuration, source routing and ranking use deterministic fallbacks.
 
 ## CLI and scheduled use
 
