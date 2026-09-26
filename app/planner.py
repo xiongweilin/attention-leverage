@@ -3,35 +3,20 @@ from __future__ import annotations
 import re
 
 from .llm import OpenAICompatibleLLM
-from .models import QueryPlan, SourceQuery
-
-SOURCE_DESCRIPTIONS = {
-    "google_news": "broad current news and mainstream coverage",
-    "gdelt": "global multilingual news/event coverage",
-    "hackernews": "technology/startup practitioner discussion",
-    "github": "software projects, tools and repository activity",
-    "openalex": "scholarly works across disciplines",
-    "arxiv": "recent technical/scientific preprints",
-    "crossref": "published scholarly literature and metadata",
-    "stackexchange": "practical technical questions and answers",
-    "rss": "configured trusted or niche RSS/Atom feeds",
-}
+from .models import QueryPlan, SourceProfile, SourceQuery
 
 
 class GoalPlanner:
-    def __init__(self, llm: OpenAICompatibleLLM, enabled_sources: list[str]):
+    def __init__(self, llm: OpenAICompatibleLLM, profiles: dict[str, SourceProfile]):
         self.llm = llm
-        self.enabled_sources = enabled_sources
+        self.profiles = profiles
 
     async def plan(self, user_input: str, horizon_hours: int | None = None) -> tuple[QueryPlan, bool]:
         if self.llm.available:
             try:
-                data = await self.llm.json(
-                    system=self._system_prompt(),
-                    user=user_input,
-                )
+                data = await self.llm.json(self._system_prompt(), user_input)
                 plan = QueryPlan.model_validate(data)
-                plan.source_queries = [q for q in plan.source_queries if q.source in self.enabled_sources]
+                plan.source_queries = [q for q in plan.source_queries if q.source in self.profiles]
                 if horizon_hours is not None:
                     plan.horizon_hours = horizon_hours
                 if not plan.source_queries:
@@ -42,53 +27,60 @@ class GoalPlanner:
         return self._fallback_plan(user_input, horizon_hours), False
 
     def _system_prompt(self) -> str:
-        sources = "\n".join(
-            f"- {name}: {SOURCE_DESCRIPTIONS[name]}"
-            for name in self.enabled_sources
-            if name in SOURCE_DESCRIPTIONS
-        )
-        return f"""You convert a person's current information need into a bounded search plan.
-The objective is not maximum content. It is to maximize the chance that decision-changing information is discovered while minimizing later human attention.
+        source_lines = []
+        for p in self.profiles.values():
+            source_lines.append(
+                f'- {p.name} | category={p.category} | authority={p.authority} | '
+                f'signal={p.signal_kind} | queryable={p.queryable}: {p.description}'
+            )
+        sources = '\n'.join(source_lines)
+        return f'''You translate a person's current information need into a bounded, heterogeneous search plan.
+The objective is to maximize the probability of discovering decision-changing information while minimizing later human attention.
 
 Available sources:
 {sources}
 
-Return one JSON object with exactly these top-level fields:
+Return one JSON object with exactly these fields:
 - goal: concise operational goal
-- horizon_hours: integer, default 72 unless the request implies another horizon
-- keywords: 4-12 high-signal terms, including useful synonyms
-- exclude_keywords: obvious noise terms if any
-- desired_signals: 2-8 kinds of changes/evidence that would change a decision
-- source_queries: array of objects {{source, query, purpose, limit}}, using only available sources, at most 3 queries per source
-- uncertainties: important unknowns that search should help discriminate
+- horizon_hours: integer; default 72 unless the request implies another horizon
+- keywords: 5-16 high-signal terms and useful synonyms, multilingual when useful
+- exclude_keywords: obvious noise terms
+- desired_signals: 3-10 concrete changes/evidence that would alter a decision
+- source_queries: array of {{source, query, purpose, limit}}; use only available source names; prefer 6-14 heterogeneous sources when the goal is broad; at most 2 queries per source
+- uncertainties: important unknowns search should discriminate
+- stop_conditions: conditions under which enough information has been found for the current purpose
 
-Use heterogeneous sources when useful. Prefer source-specific query wording. Do not invent facts. Search plans are provisional, not conclusions."""
+Routing rules:
+1. Select different information-generation mechanisms, not many near-duplicate news sources.
+2. Use primary/institutional sources to verify claims and community/social sources to discover weak signals.
+3. Include non-queryable event feeds only when their domain can materially affect the goal.
+4. Do not route every request to every source; breadth should be justified by the goal.
+5. Search plans are provisional. Never invent facts or claim that a source contains something before querying it.'''
 
     def _fallback_queries(self, text: str) -> list[SourceQuery]:
-        query = " ".join(text.split())[:240]
-        return [
-            SourceQuery(source=s, query=query, purpose="fallback broad search", limit=10)
-            for s in self.enabled_sources
-        ]
+        query = ' '.join(text.split())[:240]
+        by_category: dict[str, str] = {}
+        for name, profile in self.profiles.items():
+            by_category.setdefault(profile.category, name)
+        selected = list(by_category.values())[:14]
+        return [SourceQuery(source=s, query=query, purpose='fallback heterogeneous search', limit=10) for s in selected]
 
     def _fallback_plan(self, text: str, horizon_hours: int | None) -> QueryPlan:
-        terms = [
-            t.lower()
-            for t in re.findall(r"[A-Za-z0-9_+.#-]{3,}|[\u4e00-\u9fff]{2,}", text)
-        ]
+        terms = [t.lower() for t in re.findall(r'[A-Za-z0-9_+.#-]{3,}|[\u4e00-\u9fff]{2,}', text)]
+        keywords: list[str] = []
         seen: set[str] = set()
-        keywords = []
         for term in terms:
             if term not in seen:
                 seen.add(term)
                 keywords.append(term)
-            if len(keywords) >= 12:
+            if len(keywords) >= 14:
                 break
         return QueryPlan(
-            goal=" ".join(text.split())[:500],
+            goal=' '.join(text.split())[:500],
             horizon_hours=horizon_hours or 72,
             keywords=keywords,
-            desired_signals=["material change", "credible counterevidence", "new actionable option"],
+            desired_signals=['material change', 'credible counterevidence', 'new actionable option', 'meaningful risk'],
             source_queries=self._fallback_queries(text),
-            uncertainties=["Model planning unavailable; source queries use the raw input."],
+            uncertainties=['Model planning unavailable; routing is category-balanced rather than semantically optimized.'],
+            stop_conditions=['Enough independent evidence exists to support or reject the current action.'],
         )
