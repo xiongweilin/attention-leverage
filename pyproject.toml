@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "attention-leverage"
 version = "0.1.0"
@@ -15,6 +19,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<1"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["config*", "tests*"]
+
+[tool.setuptools.package-data]
+app = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
