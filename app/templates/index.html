@@ -1,77 +1,31 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Attention Leverage</title>
-  <style>
-    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 0; background: Canvas; color: CanvasText; }
-    main { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
-    h1 { font-size: 28px; margin-bottom: 6px; }
-    .muted { opacity: .62; }
-    textarea { width: 100%; min-height: 112px; box-sizing: border-box; padding: 14px; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; background: Canvas; color: CanvasText; }
-    button { margin-top: 10px; padding: 10px 16px; font: inherit; font-weight: 650; border: 0; border-radius: 10px; cursor: pointer; }
-    .status { margin: 18px 0; font-size: 14px; }
-    .plan { border-left: 3px solid currentColor; padding-left: 14px; margin: 22px 0; }
-    .group { margin-top: 28px; }
-    .card { padding: 16px 0; border-top: 1px solid color-mix(in srgb, CanvasText 15%, transparent); }
-    .card a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-    .meta { font-size: 12px; opacity: .58; margin: 6px 0; }
-    .reason { margin: 6px 0 0; }
-    .score { font-variant-numeric: tabular-nums; }
-    .pill { display: inline-block; padding: 2px 7px; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; margin-right: 6px; font-size: 11px; }
-    pre { white-space: pre-wrap; font-size: 12px; opacity: .75; }
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attention Leverage</title>
+<style>
+:root{color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:Canvas;color:CanvasText}main{max-width:1100px;margin:auto;padding:34px 20px 80px}h1{margin:0 0 4px;font-size:30px}.muted,.meta{opacity:.62}.meta{font-size:12px}.tabs{display:flex;gap:8px;margin:24px 0 14px}.tabs button,button{border:1px solid color-mix(in srgb,CanvasText 18%,transparent);background:Canvas;color:CanvasText;border-radius:9px;padding:8px 12px;cursor:pointer}.tabs button.active{font-weight:700;border-color:CanvasText}textarea,input{width:100%;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);border-radius:11px;padding:12px;font:inherit}textarea{min-height:110px}form button{margin-top:9px;font-weight:700}.stats{display:flex;gap:16px;flex-wrap:wrap;margin:16px 0}.stat{padding:9px 12px;border:1px solid color-mix(in srgb,CanvasText 14%,transparent);border-radius:9px}.digest{margin:22px 0;padding:17px;border-left:3px solid CanvasText;background:color-mix(in srgb,CanvasText 4%,Canvas)}.columns{display:grid;grid-template-columns:2fr 1fr;gap:24px}@media(max-width:800px){.columns{grid-template-columns:1fr}}.card{padding:15px 0;border-top:1px solid color-mix(in srgb,CanvasText 14%,transparent)}.card h3{margin:7px 0;font-size:16px}.card a{color:inherit;text-underline-offset:3px}.pill{display:inline-block;font-size:11px;padding:2px 7px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);border-radius:999px;margin-right:5px}.feedback{float:right}.feedback button{font-size:11px;padding:3px 7px;margin-left:4px}.section{margin-top:24px}.hidden{display:none}.source{display:grid;grid-template-columns:140px 120px 1fr 100px;gap:8px;padding:8px 0;border-top:1px solid color-mix(in srgb,CanvasText 10%,transparent);font-size:13px}@media(max-width:700px){.source{grid-template-columns:1fr}}.history-row{padding:10px 0;border-top:1px solid color-mix(in srgb,CanvasText 12%,transparent);cursor:pointer}ul{padding-left:20px}pre{white-space:pre-wrap;font-size:12px}
+</style>
 </head>
-<body>
-<main>
-  <h1>Attention Leverage</h1>
-  <div class="muted">扩大机器的观察面，缩小人的注意面。</div>
-  <form id="form">
-    <textarea id="input" placeholder="今天你真正想知道什么？例如：过去 48 小时里，哪些 AI agent 基础设施变化可能影响我未来 6 个月的开发方向？"></textarea>
-    <button type="submit">运行</button>
-  </form>
-  <div id="status" class="status muted"></div>
-  <section id="result"></section>
+<body><main>
+<h1>Attention Leverage</h1><div class="muted">扩大机器观察面，缩小人的注意面。</div>
+<div class="tabs"><button data-tab="run" class="active">运行</button><button data-tab="history">历史</button><button data-tab="sources">信息源</button></div>
+<section id="tab-run">
+<form id="form"><textarea id="input" placeholder="今天真正需要知道什么？可以是一个决策、风险、机会或需要持续观察的目标。"></textarea><button>理解目标并搜索</button></form>
+<div id="status" class="meta" style="margin-top:12px"></div><div id="result"></div>
+</section>
+<section id="tab-history" class="hidden"><h2>历史运行</h2><div id="history"></div></section>
+<section id="tab-sources" class="hidden"><h2>源池</h2><div class="muted">模型按目标动态选择不同信息生成机制；这里显示当前可用源和运行健康。</div><div id="sources"></div></section>
 </main>
 <script>
-const form = document.querySelector('#form');
-const input = document.querySelector('#input');
-const statusEl = document.querySelector('#status');
-const resultEl = document.querySelector('#result');
-
-function esc(s='') { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function card(x) {
-  const published = x.published_at ? new Date(x.published_at).toLocaleString() : 'time unknown';
-  return `<article class="card">
-    <div><span class="pill">${esc(x.source)}</span><span class="score">${Math.round(x.score*100)}</span></div>
-    <h3><a href="${esc(x.url)}" target="_blank" rel="noreferrer">${esc(x.title)}</a></h3>
-    <div class="meta">${esc(published)} · query: ${esc(x.query)}</div>
-    <div class="reason">${esc(x.reason)}</div>
-    ${x.signal ? `<div class="meta">signal: ${esc(x.signal)}</div>` : ''}
-  </article>`;
-}
-function group(title, items) {
-  if (!items.length) return '';
-  return `<section class="group"><h2>${title}</h2>${items.map(card).join('')}</section>`;
-}
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const value = input.value.trim(); if (!value) return;
-  resultEl.innerHTML = ''; statusEl.textContent = '正在理解目标、查询异质信息源并压缩候选…';
-  try {
-    const r = await fetch('/api/run', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({input:value})});
-    if (!r.ok) throw new Error(await r.text());
-    const data = await r.json();
-    statusEl.textContent = `采集 ${data.raw_count} 条 → 程序过滤 ${data.filtered_count} 条 → 输出 ${data.items.length} 条 · 规划模型 ${data.model_used_for_planning ? 'on':'fallback'} · 筛选模型 ${data.model_used_for_screening ? 'on':'fallback'}`;
-    const p = data.plan;
-    const plan = `<div class="plan"><strong>${esc(p.goal)}</strong><div class="meta">关键词：${p.keywords.map(esc).join(' · ') || '—'} · 时间窗：${p.horizon_hours}h</div></div>`;
-    resultEl.innerHTML = plan + group('需要注意', data.items.filter(x=>x.disposition==='attention')) + group('继续观察', data.items.filter(x=>x.disposition==='watch')) + group('背景', data.items.filter(x=>x.disposition==='background')) + (Object.keys(data.source_errors).length ? `<details><summary>源错误</summary><pre>${esc(JSON.stringify(data.source_errors,null,2))}</pre></details>` : '');
-  } catch (err) {
-    statusEl.textContent = '运行失败'; resultEl.innerHTML = `<pre>${esc(String(err))}</pre>`;
-  }
-});
-</script>
-</body>
-</html>
+const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+for(const b of document.querySelectorAll('.tabs button')) b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');for(const s of ['run','history','sources']) $('#tab-'+s).classList.toggle('hidden',s!==b.dataset.tab);if(b.dataset.tab==='history')loadHistory();if(b.dataset.tab==='sources')loadSources()};
+function list(title,arr){return arr?.length?`<h4>${esc(title)}</h4><ul>${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
+function itemCard(x){return `<article class="card"><div><span class="pill">${esc(x.disposition)}</span><span class="pill">${esc(x.source)}</span><span class="pill">${esc(x.source_category)}</span><span class="meta">score ${Math.round(x.score*100)} · seen ${x.seen_count}</span><span class="feedback"><button onclick="fb('${esc(x.id)}','${esc(x.source)}',true)">有用</button><button onclick="fb('${esc(x.id)}','${esc(x.source)}',false)">无关</button></span></div><h3><a target="_blank" rel="noreferrer" href="${esc(x.url)}">${esc(x.title)}</a></h3><div>${esc(x.reason)}</div>${x.signal?`<div class="meta">signal: ${esc(x.signal)}</div>`:''}<div class="meta">${x.published_at?new Date(x.published_at).toLocaleString():'时间未知'} · authority ${esc(x.authority)}</div></article>`}
+function render(data){const d=data.digest||{};const groups={attention:[],watch:[],background:[]};for(const x of data.items)groups[x.disposition].push(x);$('#status').textContent=`采集 ${data.raw_count} → 程序过滤 ${data.filtered_count} → 输出 ${data.items.length} · 规划模型 ${data.model_used_for_planning?'on':'fallback'} · 筛选模型 ${data.model_used_for_screening?'on':'fallback'}`;$('#result').innerHTML=`<div class="digest"><h2>${esc(d.headline||data.plan.goal)}</h2>${list('真正变化',d.what_changed)}${list('可能行动',d.possible_actions)}${list('仍未知',d.unresolved)}</div><div class="columns"><div><section class="section"><h2>需要注意</h2>${groups.attention.map(itemCard).join('')||'<div class="muted">无</div>'}</section><section class="section"><h2>继续观察</h2>${groups.watch.map(itemCard).join('')||'<div class="muted">无</div>'}</section></div><aside><h3>查询计划</h3><div class="meta">${esc(data.plan.goal)}</div>${list('关键信号',data.plan.desired_signals)}${list('未知项',data.plan.uncertainties)}<details><summary>背景项 (${groups.background.length})</summary>${groups.background.map(itemCard).join('')}</details>${Object.keys(data.source_errors||{}).length?`<details><summary>源错误</summary><pre>${esc(JSON.stringify(data.source_errors,null,2))}</pre></details>`:''}</aside></div>`}
+$('#form').onsubmit=async e=>{e.preventDefault();const input=$('#input').value.trim();if(!input)return;$('#status').textContent='模型理解目标 → 动态选源 → 并发查询 → 程序压缩 → 语义筛选…';$('#result').innerHTML='';try{const r=await fetch('/api/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({input})});if(!r.ok)throw new Error(await r.text());render(await r.json())}catch(e){$('#status').textContent='失败';$('#result').innerHTML=`<pre>${esc(e)}</pre>`}};
+async function fb(id,source,useful){await fetch('/api/feedback',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({item_id:id,source,useful,note:''})})}
+async function loadHistory(){const d=await (await fetch('/api/history')).json();$('#history').innerHTML=d.runs.map(x=>`<div class="history-row" onclick="openRun('${x.run_id}')"><b>${esc(x.headline||x.goal)}</b><div class="meta">${new Date(x.created_at).toLocaleString()} · ${x.raw_count}→${x.filtered_count} · ${x.items} output</div></div>`).join('')||'<div class="muted">暂无</div>'}
+async function openRun(id){const d=await (await fetch('/api/history/'+id)).json();document.querySelector('[data-tab=run]').click();render(d)}
+async function loadSources(){const d=await (await fetch('/api/sources')).json();$('#sources').innerHTML=d.sources.map(x=>`<div class="source"><b>${esc(x.name)}</b><span>${esc(x.category)}</span><span>${esc(x.description)}</span><span>${esc(x.authority)}${x.health?` · ${x.health.successes}/${x.health.failures}`:''}</span></div>`).join('')}
+</script></body></html>
