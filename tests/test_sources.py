@@ -11,9 +11,13 @@ def test_default_source_pool_is_highly_heterogeneous():
     client=httpx.AsyncClient()
     try:
         sources=build_sources(client,settings)
-        assert len(sources) >= 20
+        assert len(sources) >= 25
         categories={s.profile.category for s in sources.values()}
-        assert len(categories) >= 12
+        assert len(categories) >= 17
+        assert {
+            'wikidata','openalex_authors','openalex_institutions',
+            'propublica_nonprofits','grants_gov',
+        }.issubset(sources)
     finally:
         import asyncio
         asyncio.run(client.aclose())
