@@ -1,0 +1,32 @@
+[defaults]
+max_results_per_query = 12
+
+[sources.google_news]
+enabled = true
+
+[sources.gdelt]
+enabled = true
+
+[sources.hackernews]
+enabled = true
+
+[sources.github]
+enabled = true
+
+[sources.openalex]
+enabled = true
+
+[sources.arxiv]
+enabled = true
+
+[sources.crossref]
+enabled = true
+
+[sources.stackexchange]
+enabled = true
+
+# Add any RSS/Atom feeds you trust. They are fetched every run and then filtered
+# against the current goal. This is useful for official sources and niche feeds.
+[sources.rss]
+enabled = true
+feeds = []
