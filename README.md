@@ -2,14 +2,14 @@
 
 > Expand machine observation. Shrink human attention load.
 
-A small goal-driven information aggregation system built around this pipeline:
+`attention-leverage` is a goal-driven information system built around a strict pipeline:
 
 ```text
 input
   ↓
 model understanding
   ↓
-goal-driven queries across heterogeneous sources
+goal-driven querying across heterogeneous sources
   ↓
 deterministic program filtering
   ↓
@@ -18,49 +18,127 @@ model semantic screening
 small decision-oriented output
 ```
 
-The system is intentionally not an infinite feed. Its job is to search broadly while allowing very little to reach human attention.
+The product objective is not “read more with AI.” It is the opposite: let machines search much more widely while allowing very little to reach human attention.
 
-## Current MVP
+## What the current version adds
 
-The first version supports:
+This version turns the original prototype into a persistent personal attention layer:
 
-- natural-language input as the current information goal;
-- model-generated `QueryPlan` with time horizon, keywords, desired signals, uncertainties and source-specific searches;
-- heterogeneous query sources: Google News RSS, GDELT, Hacker News, GitHub, OpenAlex, arXiv, Crossref, Stack Exchange and configurable RSS/Atom feeds;
-- deterministic filtering before semantic model use: freshness, URL normalization, near-duplicate titles, exclusions, lexical relevance, recency and per-source quotas;
-- model screening after compression: relevance, novelty, actionability, confidence, a short reason and `attention | watch | background` disposition;
-- a minimal dashboard that displays the result as a decision surface rather than an inbox;
-- deterministic fallback planning/ranking when no model is configured.
+- dynamic model-generated `QueryPlan` instead of a fixed subscription list;
+- 20 built-in sources enabled without paid credentials, spanning fundamentally different information-generation mechanisms;
+- optional SEC, ReliefWeb and configured Greenhouse job boards;
+- configurable RSS/Atom long-tail feeds;
+- deterministic deduplication, freshness filtering, exclusion rules, lexical relevance, category diversity and per-source quotas;
+- persistent SQLite history so repeated information gets lower novelty on later runs;
+- model screening that explicitly separates relevance, novelty, importance, actionability and confidence;
+- source authority classes (`primary`, `institutional`, `community`, `aggregator`) carried into the final judgment;
+- source-health tracking and graceful partial failure;
+- user feedback that gradually adjusts source weights;
+- saved goals and a CLI suitable for cron/systemd/GitHub Actions scheduling;
+- run history and a dashboard for current results, previous runs and source health.
 
-## Why the two model calls are separated
+## Source pool
 
-The first model call expands the search space. It translates today's goal into source-specific queries and discriminating signals.
+The default pool covers these mechanisms:
 
-The program layer then cheaply removes obvious redundancy and noise.
+| Domain | Sources |
+| --- | --- |
+| Broad news / global events | Google News RSS, GDELT |
+| Social / practitioner weak signals | Bluesky, Hacker News, Stack Overflow |
+| Open-source / package ecosystems | GitHub, npm, crates.io |
+| General research | OpenAlex, arXiv, Crossref |
+| Biomedical / health | Europe PMC, ClinicalTrials.gov |
+| Regulation / public institutions | Federal Register, World Bank |
+| Cybersecurity | CISA KEV, NIST NVD |
+| Natural hazards | USGS earthquakes, NASA EONET |
+| Long-tail / trusted sources | configurable RSS/Atom |
+| Optional corporate disclosure | SEC EDGAR (`SEC_USER_AGENT`) |
+| Optional humanitarian reporting | ReliefWeb (`RELIEFWEB_APPNAME`) |
+| Optional hiring signals | configured Greenhouse public job boards |
 
-The second model call operates only on the reduced candidate set. It answers a different question: which of these items deserves scarce human attention now?
+This is deliberately heterogeneous. Ten versions of the same news story do not count as ten independent sources.
 
-```text
-LLM #1: what should the machine look for?
-program: what can be removed cheaply and deterministically?
-LLM #2: what is worth human attention?
-```
+## Architecture
+
+### 1. Input → model understanding
+
+The first model call does not answer the user. It creates a search plan:
+
+- operational goal;
+- time horizon;
+- high-signal terms and exclusions;
+- the kinds of evidence that would change the decision;
+- source-specific queries;
+- unknowns that need discrimination;
+- stopping conditions.
+
+It is the *search-space expansion* step.
+
+### 2. Goal-driven source routing
+
+Each source advertises metadata such as category, authority class and signal type. The planner can therefore combine, for example:
+
+- a social weak-signal source to discover a new issue;
+- a regulatory or registry source to verify whether the issue is real;
+- a research source to test whether the mechanism is credible.
+
+The fallback planner remains usable without a model and chooses one source per category instead of blindly querying everything.
+
+### 3. Deterministic compression
+
+Before model judgment, code handles work that should be cheap and inspectable:
+
+- canonical URL deduplication;
+- near-duplicate title removal;
+- freshness windows;
+- explicit exclusion terms;
+- lexical relevance;
+- history novelty;
+- source feedback weighting;
+- authority weighting;
+- category diversity;
+- per-source quotas.
+
+### 4. Semantic qualification
+
+The second model call sees only the compressed candidate set and decides:
+
+- relevance;
+- novelty;
+- importance;
+- actionability;
+- confidence;
+- `attention | watch | background`.
+
+It also returns a compact digest: what changed, possible bounded actions and unresolved uncertainty.
+
+### 5. Persistence and learning
+
+SQLite stores:
+
+- runs and their output;
+- observed item identities and seen counts;
+- source health;
+- saved goals;
+- useful / irrelevant feedback.
+
+History changes the meaning of novelty: an item that repeatedly reappears is not treated as “new” simply because it was fetched again.
 
 ## Run
 
-Requires Python 3.11+.
+Python 3.11+:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e '.[dev]'
 cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
 Open `http://127.0.0.1:8000`.
 
-An LLM is optional. For model planning and semantic screening, configure an OpenAI-compatible endpoint in `.env`:
+An LLM is optional. Configure any OpenAI-compatible endpoint in `.env`:
 
 ```bash
 OPENAI_API_KEY=...
@@ -68,52 +146,65 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=...
 ```
 
-A GitHub token is optional but recommended for higher API rate limits.
+Without it, source routing and ranking use deterministic fallbacks.
 
-## Source pool
+## CLI and scheduled use
 
-`config/sources.toml` controls which source adapters are active. Generic RSS/Atom feeds can be added there for official sources, niche communities, company changelogs, regulators, journals or other trusted feeds.
+Run one ad-hoc goal:
 
-A source adapter has one responsibility: turn one goal-specific query into normalized `RawItem` records. New source types should not leak source-specific semantics into the rest of the pipeline.
+```bash
+attention-leverage "过去 48 小时有哪些变化可能改变我对 AI agent 基础设施的判断？"
+```
 
-## Design principles
+Run a saved goal:
 
-1. **Broad machine search, narrow human output.** More sources must not mean more reading.
-2. **Goal-driven rather than subscription-driven.** Today's input can produce a different search plan from yesterday's.
-3. **Heterogeneous evidence.** Mainstream news, practitioner communities, code, research literature and trusted niche feeds should not be collapsed into one source type.
-4. **Deterministic compression before model judgment.** Do cheap, inspectable work with code before spending model attention.
-5. **Separate discovery from qualification.** Finding an item does not mean it deserves attention.
-6. **Preserve uncertainty.** Missing evidence and source failures remain visible; they are not silently converted into negative conclusions.
-7. **No infinite feed.** The interface should make the important few obvious and let the rest disappear.
+```bash
+attention-leverage --saved "agent-infra"
+```
 
-## Projects worth borrowing ideas from
+Run every enabled saved goal, suitable for cron:
 
-The MVP does not copy their code; it borrows architectural/product ideas from several mature open-source projects:
+```bash
+attention-leverage --saved '*' --json > latest.json
+```
 
-- [RSSHub](https://github.com/DIYgod/RSSHub): normalize a large variety of upstream sources into machine-consumable feeds.
-- [changedetection.io](https://github.com/dgtlmoon/changedetection.io): focus on meaningful change/delta rather than repeatedly presenting whole pages.
-- [Huginn](https://github.com/huginn/huginn): event-driven agents and composable information workflows.
-- [Folo](https://github.com/RSSNext/Folo): modern feed aggregation and AI-assisted reading UX.
-- [Glance](https://github.com/glanceapp/glance): a compact dashboard rather than an attention-maximizing feed.
+Scheduling is intentionally outside the semantic core: cron, systemd timers, GitHub Actions or another scheduler can invoke the same deterministic pipeline.
 
-## Current boundaries
+## Adding long-tail sources
 
-This is an initial prototype, not yet a continuously running personal attention system. It does not yet include:
+`config/sources.toml` can add RSS/Atom feeds with an authority hint:
 
-- persistent history and cross-run novelty detection;
-- scheduled/background collection;
-- embeddings or learned personal ranking;
-- source health/reliability models;
-- notification thresholds;
-- page-change extraction comparable to changedetection.io;
-- source-specific authority/provenance qualification;
-- authentication or multi-user isolation.
+```toml
+[sources.rss]
+enabled = true
+feeds = [
+  { name = "Official agency", url = "https://example.gov/feed.xml", authority = "primary" },
+  { name = "Niche community", url = "https://example.org/rss", authority = "community" },
+]
+```
 
-Those should be added only after the query/filter/screen/output loop proves useful.
+Greenhouse boards can be added similarly:
+
+```toml
+[sources.greenhouse]
+enabled = true
+boards = [
+  { name = "Target company", token = "targetcompany" },
+]
+```
+
+## Important boundaries
+
+- Discovery is not verification. A social post and an official filing are not semantically equivalent.
+- Provider success is not evidence that reality changed.
+- More sources do not justify more human reading.
+- Missing or failed sources remain explicit uncertainty; they do not become evidence of absence.
+- Feedback changes source weighting only mildly. It must not silently create an information bubble.
 
 ## Tests
 
 ```bash
-pip install -e '.[dev]'
 pytest -q
 ```
+
+CI also compiles the application before running tests.
