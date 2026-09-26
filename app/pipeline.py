@@ -29,31 +29,69 @@ class AttentionPipeline:
         self._semaphore = asyncio.Semaphore(settings.source_concurrency)
 
     async def run(self, request: RunRequest) -> RunResult:
-        plan, planned_with_model = await self.planner.plan(request.input, request.horizon_hours)
-        tasks = [self._run_source(q, plan.horizon_hours) for q in plan.source_queries if q.source in self.sources]
+        run_id = uuid.uuid4().hex[:16]
+        cognitive_context = self.store.cognitive_context(self.profiles)
+        plan, planned_with_model = await self.planner.plan(
+            request.input,
+            request.horizon_hours,
+            cognitive_context,
+        )
+        tasks = [
+            self._run_source(q, plan.horizon_hours)
+            for q in plan.source_queries
+            if q.source in self.sources
+        ]
         results = await asyncio.gather(*tasks) if tasks else []
 
         raw = []
         errors: dict[str, str] = {}
-        for source_name, items, error in results:
+        query_events: list[dict] = []
+        for query, items, error in results:
             raw.extend(items)
             if error:
-                errors[source_name] = error
+                errors[query.source] = error
+            profile = self.profiles.get(query.source)
+            query_events.append({
+                'source': query.source,
+                'category': profile.category if profile else '',
+                'query': query.query,
+                'purpose': query.purpose,
+                'mode': query.mode,
+                'result_count': len(items),
+                'ok': not bool(error),
+            })
+        self.store.record_query_events(run_id, query_events)
+
         raw = balanced_cap(raw, self.settings.max_raw_items)
         history = self.store.history([x.id for x in raw])
         source_weights = self.store.source_weights()
         filtered = deterministic_filter(
-            raw, plan, history=history, source_weights=source_weights,
+            raw,
+            plan,
+            history=history,
+            source_weights=source_weights,
             max_items=self.settings.max_filtered_items,
-            per_source_quota=max(4, self.settings.max_filtered_items // max(1, len(self.sources) // 2)),
+            per_source_quota=max(
+                4,
+                self.settings.max_filtered_items // max(1, len(self.sources) // 2),
+            ),
         )
-        digest, ranked, screened_with_model = await self.screener.screen(plan, filtered)
+        digest, cognitive_map, ranked, screened_with_model = await self.screener.screen(
+            plan,
+            filtered,
+            cognitive_context,
+        )
         output_limit = request.max_output_items or self.settings.max_output_items
         ranked = ranked[:output_limit]
 
         result = RunResult(
-            run_id=uuid.uuid4().hex[:16], plan=plan, digest=digest,
-            raw_count=len(raw), filtered_count=len(filtered), items=ranked,
+            run_id=run_id,
+            plan=plan,
+            digest=digest,
+            cognitive_map=cognitive_map,
+            raw_count=len(raw),
+            filtered_count=len(filtered),
+            items=ranked,
             model_used_for_planning=planned_with_model,
             model_used_for_screening=screened_with_model,
             source_errors=errors,
@@ -69,8 +107,8 @@ class AttentionPipeline:
             try:
                 items = await source.search(query, horizon_hours)
                 self.store.record_source_health(query.source, True)
-                return query.source, items, ''
+                return query, items, ''
             except Exception as exc:
                 error = f'{type(exc).__name__}: {exc}'
                 self.store.record_source_health(query.source, False, error)
-                return query.source, [], error
+                return query, [], error
