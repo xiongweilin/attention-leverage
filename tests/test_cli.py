@@ -76,8 +76,9 @@ def test_cli_json_and_all_modes_and_missing_saved_goal(tmp_path, monkeypatch, ca
     assert '"digest"' in capsys.readouterr().out
 
     missing = Namespace(saved='not-found', goal='', horizon=None, json=False, all=False)
+    missing_run = cli._run(missing)
     with pytest.raises(SystemExit, match='No enabled saved goal'):
-        asyncio.run(cli._run(missing))
+        asyncio.run(missing_run)
 
 
 def test_cli_main_validates_arguments_and_dispatches(monkeypatch):

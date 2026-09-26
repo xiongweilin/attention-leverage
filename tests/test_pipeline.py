@@ -59,8 +59,11 @@ async def test_pipeline_gathers_sources_records_failures_and_persists(tmp_path, 
 
     result = await pipeline.run(RunRequest(input='watch agent releases', horizon_hours=24))
 
-    assert result.model_used_for_planning and result.model_used_for_screening
-    assert result.raw_count == 1 and result.filtered_count == 1 and len(result.items) == 1
+    assert result.model_used_for_planning is True
+    assert result.model_used_for_screening is True
+    assert result.raw_count == 1
+    assert result.filtered_count == 1
+    assert len(result.items) == 1
     assert result.source_counts == {'good': 1}
     assert 'RuntimeError: offline' in result.source_errors['bad']
     assert store.get_run(result.run_id)['digest']['headline'] == 'One material change'

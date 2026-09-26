@@ -61,7 +61,9 @@ async def test_screening_empty_and_model_failure_paths():
     plan=QueryPlan(goal='x',uncertainties=['unknown'])
     screener=SemanticScreener(BrokenLLM(),{})
     digest, ranked, used=await screener.screen(plan,[])
-    assert digest.unresolved == ['unknown'] and ranked == [] and used is True
+    assert digest.unresolved == ['unknown']
+    assert ranked == []
+    assert used is True
     item=Candidate(id='x',source='x',title='Fallback',url='https://x',heuristic_score=.5)
     digest, ranked, used=await screener.screen(plan,[item])
     assert used is False

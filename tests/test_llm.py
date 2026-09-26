@@ -50,23 +50,26 @@ async def test_non_streaming_responses_and_invalid_json():
         return httpx.Response(200, json={'output_text':'not-json'})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(invalid_handler)) as client:
+        invalid_response = OpenAICompatibleLLM(client, settings).json('s', 'u')
         with pytest.raises(LLMUnavailable, match='valid JSON'):
-            await OpenAICompatibleLLM(client, settings).json('s', 'u')
+            await invalid_response
 
 
 async def test_unconfigured_and_empty_json_responses_fail_cleanly():
     settings = Settings(openai_api_key='', openai_model='')
     async with httpx.AsyncClient() as client:
+        unavailable_response = OpenAICompatibleLLM(client, settings).json('s', 'u')
         with pytest.raises(LLMUnavailable, match='not configured'):
-            await OpenAICompatibleLLM(client, settings).json('s', 'u')
+            await unavailable_response
 
     async def empty_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={'output':[]})
 
     settings = Settings(openai_api_key='token', openai_model='model')
     async with httpx.AsyncClient(transport=httpx.MockTransport(empty_handler)) as client:
+        empty_response = OpenAICompatibleLLM(client, settings).json('s', 'u')
         with pytest.raises(LLMUnavailable, match='no text output'):
-            await OpenAICompatibleLLM(client, settings).json('s', 'u')
+            await empty_response
 
 
 def test_output_extractor_handles_message_parts_and_invalid_shapes():
@@ -100,7 +103,9 @@ def test_sse_fallback_events_errors_and_malformed_lines():
     assert cls._response_text(httpx.Response(200, text=completed)) == 'done'
 
     failed = 'data: {"type":"response.failed"}\n'
+    failed_response = httpx.Response(200, text=failed)
     with pytest.raises(LLMUnavailable, match='stream failed'):
-        cls._response_text(httpx.Response(200, text=failed))
+        cls._response_text(failed_response)
+    empty_response = httpx.Response(200, text='data: [DONE]\n')
     with pytest.raises(LLMUnavailable, match='no text output'):
-        cls._response_text(httpx.Response(200, text='data: [DONE]\n'))
+        cls._response_text(empty_response)

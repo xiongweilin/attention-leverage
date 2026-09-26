@@ -43,7 +43,8 @@ def test_http_api_routes_use_pipeline_and_store(tmp_path, monkeypatch):
         assert '<label for="input">' in index.text
 
         health = client.get('/api/health').json()
-        assert health['ok'] is True and health['llm_configured'] is True
+        assert health['ok'] is True
+        assert health['llm_configured'] is True
         source_data = client.get('/api/sources').json()
         assert source_data['sources'][0]['health']['successes'] == 1
         assert client.get('/api/history?limit=0').json()['runs'] == []

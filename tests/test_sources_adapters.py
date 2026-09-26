@@ -59,7 +59,8 @@ def test_news_and_social_adapters_parse_records_and_limits():
 
     hn = HackerNewsSource(StubClient(Response({'hits':[{'title':'HN signal','objectID':'42','created_at':NOW.isoformat(),'points':7}]})))
     hn_item = asyncio_run(hn.search(query(hn), 24))[0]
-    assert hn_item.url.endswith('id=42') and hn_item.metadata['points'] == 7
+    assert hn_item.url.endswith('id=42')
+    assert hn_item.metadata['points'] == 7
 
     bluesky = BlueskySource(StubClient(Response({'posts':[{
         'indexedAt':NOW.isoformat(),'uri':'at://did:plc:a/app.bsky.feed.post/p1',
