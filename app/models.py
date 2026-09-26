@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 
 Disposition = Literal['attention', 'watch', 'background']
 Authority = Literal['primary', 'institutional', 'community', 'aggregator', 'unknown']
+QueryMode = Literal['goal', 'blindspot', 'counterevidence', 'environment', 'verification']
+AssumptionStatus = Literal['active', 'challenged', 'retired']
+AssumptionOrigin = Literal['user', 'inferred']
+ChallengeStrength = Literal['weak', 'watch', 'strong']
 
 
 class SourceProfile(BaseModel):
@@ -24,6 +28,7 @@ class SourceQuery(BaseModel):
     source: str
     query: str = ''
     purpose: str = ''
+    mode: QueryMode = 'goal'
     limit: int = Field(default=10, ge=1, le=50)
 
 
@@ -36,6 +41,8 @@ class QueryPlan(BaseModel):
     source_queries: list[SourceQuery] = Field(default_factory=list)
     uncertainties: list[str] = Field(default_factory=list)
     stop_conditions: list[str] = Field(default_factory=list)
+    working_assumptions: list[str] = Field(default_factory=list)
+    exploration_questions: list[str] = Field(default_factory=list)
 
 
 class RawItem(BaseModel):
@@ -68,6 +75,8 @@ class Screening(BaseModel):
     actionability: float = Field(ge=0, le=1)
     confidence: float = Field(ge=0, le=1)
     importance: float = Field(ge=0, le=1)
+    model_pressure: float = Field(default=0, ge=0, le=1)
+    environment_distance: float = Field(default=0, ge=0, le=1)
     reason: str
     signal: str = ''
     disposition: Disposition = 'background'
@@ -80,12 +89,62 @@ class Digest(BaseModel):
     unresolved: list[str] = Field(default_factory=list)
 
 
+class BlindSpot(BaseModel):
+    area: str
+    why_unseen: str = ''
+    evidence_gap: str = ''
+    suggested_probe: str = ''
+    severity: float = Field(default=.5, ge=0, le=1)
+
+
+class EnvironmentInsight(BaseModel):
+    name: str
+    description: str = ''
+    distance: float = Field(default=.5, ge=0, le=1)
+    why_distant: str = ''
+    entry_points: list[str] = Field(default_factory=list)
+    hidden_rules: list[str] = Field(default_factory=list)
+    connectors: list[str] = Field(default_factory=list)
+    paths: list[str] = Field(default_factory=list)
+    timing: list[str] = Field(default_factory=list)
+    low_cost_entries: list[str] = Field(default_factory=list)
+    evidence_item_ids: list[str] = Field(default_factory=list)
+
+
+class Reinterpretation(BaseModel):
+    trigger: str
+    old_frame: str = ''
+    new_frame: str = ''
+    confidence: float = Field(default=.5, ge=0, le=1)
+    evidence_item_ids: list[str] = Field(default_factory=list)
+
+
+class ModelChallenge(BaseModel):
+    assumption_id: str = ''
+    assumption: str
+    signal: str
+    why_it_matters: str = ''
+    severity: float = Field(default=.5, ge=0, le=1)
+    strength: ChallengeStrength = 'watch'
+    evidence_item_ids: list[str] = Field(default_factory=list)
+
+
+class CognitiveMap(BaseModel):
+    long_unseen: list[BlindSpot] = Field(default_factory=list)
+    distant_environments: list[EnvironmentInsight] = Field(default_factory=list)
+    reinterpretations: list[Reinterpretation] = Field(default_factory=list)
+    model_failures: list[ModelChallenge] = Field(default_factory=list)
+    next_explorations: list[str] = Field(default_factory=list)
+
+
 class RankedItem(Candidate):
     relevance: float = 0.0
     novelty: float = 0.0
     actionability: float = 0.0
     confidence: float = 0.0
     importance: float = 0.0
+    model_pressure: float = 0.0
+    environment_distance: float = 0.0
     reason: str = ''
     signal: str = ''
     disposition: Disposition = 'background'
@@ -103,6 +162,7 @@ class RunResult(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     plan: QueryPlan
     digest: Digest
+    cognitive_map: CognitiveMap = Field(default_factory=CognitiveMap)
     raw_count: int
     filtered_count: int
     items: list[RankedItem]
@@ -124,3 +184,21 @@ class FeedbackRequest(BaseModel):
     source: str
     useful: bool
     note: str = Field(default='', max_length=1000)
+
+
+class AssumptionInput(BaseModel):
+    statement: str = Field(min_length=2, max_length=2000)
+    scope: str = Field(default='', max_length=500)
+    confidence: float = Field(default=.6, ge=0, le=1)
+
+
+class Assumption(BaseModel):
+    id: str
+    statement: str
+    scope: str = ''
+    confidence: float = Field(default=.6, ge=0, le=1)
+    status: AssumptionStatus = 'active'
+    origin: AssumptionOrigin = 'user'
+    created_at: str = ''
+    updated_at: str = ''
+    last_challenged_at: str = ''
