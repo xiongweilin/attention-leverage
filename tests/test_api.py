@@ -41,6 +41,7 @@ def test_http_api_routes_use_pipeline_and_store(tmp_path, monkeypatch):
         index = client.get('/')
         assert index.status_code == 200
         assert '<label for="input">' in index.text
+        assert '你长期没看到什么？' in index.text
 
         health = client.get('/api/health').json()
         assert health['ok'] is True
@@ -52,6 +53,7 @@ def test_http_api_routes_use_pipeline_and_store(tmp_path, monkeypatch):
         run_response = client.post('/api/run', json={'input':'watch agent releases','horizon_hours':24})
         assert run_response.status_code == 200
         assert run_response.json()['digest']['headline'] == 'A useful finding'
+        assert 'cognitive_map' in run_response.json()
         assert client.get('/api/history').json()['runs'][0]['run_id'] == 'run-1'
         assert client.get('/api/history/run-1').json()['run_id'] == 'run-1'
         assert client.get('/api/history/missing').status_code == 404
@@ -60,7 +62,25 @@ def test_http_api_routes_use_pipeline_and_store(tmp_path, monkeypatch):
             'item_id':'item-1','source':'stub','useful':True,'note':'good',
         })
         assert feedback.json() == {'ok': True}
+
         assert client.get('/api/goals').json()['goals'] == []
         assert client.post('/api/goals', json={'name':'agent','prompt':'watch agents'}).status_code == 200
         assert client.get('/api/goals').json()['goals'][0]['name'] == 'agent'
         assert client.delete('/api/goals/agent').json() == {'ok': True}
+
+        coverage = client.get('/api/coverage').json()
+        assert 'coverage' in coverage
+        cognitive = client.get('/api/cognitive-map').json()
+        assert cognitive['underexplored_categories'][0]['category'] == 'test'
+        assert client.get('/api/environments').json()['environments'] == []
+
+        assert client.get('/api/assumptions').json()['assumptions'] == []
+        saved = client.post('/api/assumptions', json={
+            'statement':'Formal credentials are the only entry path',
+            'scope':'target environment',
+            'confidence':.7,
+        }).json()['assumption']
+        assert saved['status'] == 'active'
+        assert client.get('/api/assumptions').json()['assumptions'][0]['id'] == saved['id']
+        assert client.delete('/api/assumptions/'+saved['id']).json() == {'ok': True}
+        assert client.get('/api/assumptions').json()['assumptions'] == []
