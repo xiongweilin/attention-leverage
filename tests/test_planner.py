@@ -18,23 +18,50 @@ async def test_fallback_plan_uses_category_balanced_sources():
     assert {q.source for q in plan.source_queries}=={'a','c'}
 
 
-async def test_model_plan_filters_unknown_sources_and_overrides_horizon():
+async def test_fallback_prioritizes_underexplored_categories():
+    profiles={
+        'news':SourceProfile(name='news',category='news',description='n'),
+        'people':SourceProfile(name='people',category='people_network',description='p'),
+        'grants':SourceProfile(name='grants',category='grants_opportunities',description='g'),
+    }
+    context={'underexplored_categories':[
+        {'category':'grants_opportunities','searches':0,'items':0},
+        {'category':'people_network','searches':0,'items':0},
+    ]}
+    plan,used=await GoalPlanner(NoLLM(),profiles).plan('find entry paths',72,context)
+    assert not used
+    assert [q.source for q in plan.source_queries[:2]] == ['grants','people']
+    assert all(q.mode == 'blindspot' for q in plan.source_queries[:2])
+    assert plan.exploration_questions
+
+
+async def test_model_plan_filters_unknown_sources_overrides_horizon_and_receives_context():
     class ModelLLM:
         available=True
 
         async def json(self, system, user):
             assert 'Available sources:' in system
+            assert 'Calibration questions' in system
+            assert '"assumptions"' in system
             assert user == 'watch agent releases'
             return {
                 'goal':'agent releases','horizon_hours':120,'keywords':['agent'],
-                'source_queries':[{'source':'a','query':'agent'}, {'source':'missing','query':'agent'}],
+                'source_queries':[
+                    {'source':'a','query':'agent','mode':'counterevidence'},
+                    {'source':'missing','query':'agent'},
+                ],
+                'working_assumptions':['release cadence remains stable'],
+                'exploration_questions':['what would falsify the cadence model?'],
             }
 
     profiles={'a':SourceProfile(name='a',category='news',description='A')}
-    plan, used = await GoalPlanner(ModelLLM(), profiles).plan('watch agent releases', 24)
+    context={'assumptions':[{'id':'x','statement':'release cadence remains stable'}]}
+    plan, used = await GoalPlanner(ModelLLM(), profiles).plan('watch agent releases', 24, context)
     assert used is True
     assert plan.horizon_hours == 24
     assert [query.source for query in plan.source_queries] == ['a']
+    assert plan.source_queries[0].mode == 'counterevidence'
+    assert plan.working_assumptions
 
 
 async def test_model_plan_without_valid_routes_falls_back_and_model_errors_fall_back():
