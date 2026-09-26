@@ -38,8 +38,21 @@ enabled = true
 [sources.nasa_eonet]
 enabled = true
 
+# Structural environment sources: people, institutions, organizations, grants and entity graphs.
+[sources.wikidata]
+enabled = true
+[sources.openalex_authors]
+enabled = true
+[sources.openalex_institutions]
+enabled = true
+[sources.propublica_nonprofits]
+enabled = true
+[sources.grants_gov]
+enabled = true
+
 # Generic long-tail source pool. Add official agencies, journals, company blogs,
-# changelogs, local communities, newsletters, central banks, etc.
+# changelogs, local communities, newsletters, central banks, schools, foundations,
+# associations, conferences and membership organizations.
 [sources.rss]
 enabled = true
 feeds = []
