@@ -4,21 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "attention-leverage"
-version = "0.1.0"
-description = "Goal-driven information aggregation that expands machine search while shrinking human attention load."
+version = "0.3.0"
+description = "Goal-driven heterogeneous information aggregation that expands machine observation while shrinking human attention load."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
   "httpx>=0.27,<1",
-  "feedparser>=6.0,<7",
   "jinja2>=3.1,<4",
   "pydantic>=2.8,<3",
-  "python-dotenv>=1.0,<2",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<1"]
+
+[project.scripts]
+attention-leverage = "app.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
