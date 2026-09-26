@@ -32,7 +32,7 @@ app = FastAPI(title='Attention Leverage', version='0.3.0', lifespan=lifespan)
 
 @app.get('/', response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse('index.html', {'request': request})
+    return templates.TemplateResponse(request=request, name='index.html', context={})
 
 
 @app.get('/api/health')
@@ -60,7 +60,7 @@ async def history(limit: int = 20):
     return {'runs': store.recent_runs(max(1, min(limit, 100)))}
 
 
-@app.get('/api/history/{run_id}')
+@app.get('/api/history/{run_id}', responses={404: {'description': 'Run not found'}})
 async def history_run(run_id: str):
     data = store.get_run(run_id)
     if not data:

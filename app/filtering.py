@@ -56,15 +56,24 @@ def balanced_cap(items: list[RawItem], limit: int) -> list[RawItem]:
         buckets.setdefault(item.source, []).append(item)
     out: list[RawItem] = []
     while len(out) < limit and buckets:
-        for source in list(buckets):
-            bucket = buckets[source]
-            if bucket:
-                out.append(bucket.pop(0))
-                if len(out) >= limit:
-                    break
-            if not bucket:
-                buckets.pop(source, None)
+        picked = _take_source_round(buckets, limit - len(out))
+        if not picked:
+            break
+        out.extend(picked)
     return out
+
+
+def _take_source_round(buckets: dict[str, list[RawItem]], limit: int) -> list[RawItem]:
+    picked: list[RawItem] = []
+    for source in tuple(buckets):
+        bucket = buckets[source]
+        if bucket:
+            picked.append(bucket.pop(0))
+            if len(picked) >= limit:
+                break
+        if not bucket:
+            buckets.pop(source, None)
+    return picked
 
 
 def deterministic_filter(
@@ -84,61 +93,115 @@ def deterministic_filter(
     seen_titles: list[str] = []
 
     for item in items:
-        if item.published_at is not None:
-            pub = item.published_at if item.published_at.tzinfo else item.published_at.replace(tzinfo=timezone.utc)
-            if pub < cutoff:
-                continue
-        canon = canonical_url(item.url)
-        title_norm = norm_text(item.title)
-        if canon and canon in seen_urls:
-            continue
-        if title_norm and any(SequenceMatcher(None, title_norm, prior).ratio() >= .94 for prior in seen_titles[-180:]):
-            continue
-
-        lexical, matched = term_matches(item, plan)
-        if lexical < 0:
-            continue
-        recency = recency_score(item.published_at, plan.horizon_hours)
-        hist = history.get(item.id, {})
-        seen_count = int(hist.get('seen_count', 0) or 0)
-        novelty = 1.0 if seen_count == 0 else max(.15, 1 / math.sqrt(seen_count + 1))
-        sw = source_weights.get(item.source, 1.0) * AUTHORITY_WEIGHT.get(item.authority, .95)
-        heuristic = (0.46 * lexical + 0.26 * recency + 0.18 * novelty + 0.10) * sw
-        scored.append(Candidate(
-            **item.model_dump(), heuristic_score=min(1.25, heuristic), lexical_score=lexical,
-            recency_score=recency, source_weight=sw, history_novelty=novelty,
-            seen_count=seen_count, matched_terms=matched,
-        ))
-        if canon:
-            seen_urls.add(canon)
-        if title_norm:
-            seen_titles.append(title_norm)
+        candidate = _score_candidate(item, plan, history, source_weights, cutoff, seen_urls, seen_titles)
+        if candidate is not None:
+            scored.append(candidate)
 
     scored.sort(key=lambda x: x.heuristic_score, reverse=True)
+    return _select_diverse(scored, max_items, per_source_quota)
+
+
+def _score_candidate(
+    item: RawItem,
+    plan: QueryPlan,
+    history: dict[str, dict],
+    source_weights: dict[str, float],
+    cutoff: datetime,
+    seen_urls: set[str],
+    seen_titles: list[str],
+) -> Candidate | None:
+    if _is_outside_horizon(item, cutoff):
+        return None
+    canon = canonical_url(item.url)
+    title_norm = norm_text(item.title)
+    if _is_duplicate(canon, title_norm, seen_urls, seen_titles):
+        return None
+    lexical, matched = term_matches(item, plan)
+    if lexical < 0:
+        return None
+
+    hist = history.get(item.id, {})
+    seen_count = int(hist.get('seen_count', 0) or 0)
+    novelty = 1.0 if seen_count == 0 else max(.15, 1 / math.sqrt(seen_count + 1))
+    weight = source_weights.get(item.source, 1.0) * AUTHORITY_WEIGHT.get(item.authority, .95)
+    heuristic = (0.46 * lexical + 0.26 * recency_score(item.published_at, plan.horizon_hours)
+                 + 0.18 * novelty + 0.10) * weight
+    if canon:
+        seen_urls.add(canon)
+    if title_norm:
+        seen_titles.append(title_norm)
+    return Candidate(
+        **item.model_dump(), heuristic_score=min(1.25, heuristic), lexical_score=lexical,
+        recency_score=recency_score(item.published_at, plan.horizon_hours), source_weight=weight,
+        history_novelty=novelty, seen_count=seen_count, matched_terms=matched,
+    )
+
+
+def _is_outside_horizon(item: RawItem, cutoff: datetime) -> bool:
+    if item.published_at is None:
+        return False
+    published = item.published_at if item.published_at.tzinfo else item.published_at.replace(tzinfo=timezone.utc)
+    return published < cutoff
+
+
+def _is_duplicate(canon: str, title_norm: str, seen_urls: set[str], seen_titles: list[str]) -> bool:
+    if canon and canon in seen_urls:
+        return True
+    return bool(title_norm and any(
+        SequenceMatcher(None, title_norm, prior).ratio() >= .94 for prior in seen_titles[-180:]
+    ))
+
+
+def _select_diverse(scored: list[Candidate], max_items: int, per_source_quota: int) -> list[Candidate]:
     selected: list[Candidate] = []
     counts: dict[str, int] = defaultdict(int)
     categories: set[str] = set()
+    if _select_new_categories(scored, max_items, selected, counts, categories):
+        return selected
+    if _select_unrepresented_sources(scored, max_items, selected, counts):
+        return selected
+    _fill_source_quotas(scored, max_items, per_source_quota, selected, counts)
+    return selected
 
-    # First pass preserves heterogeneous categories.
+
+def _select_new_categories(
+    scored: list[Candidate], max_items: int, selected: list[Candidate],
+    counts: dict[str, int], categories: set[str],
+) -> bool:
     for item in scored:
-        if item.source_category and item.source_category not in categories:
-            selected.append(item); counts[item.source] += 1; categories.add(item.source_category)
-            if len(selected) >= max_items:
-                return selected
+        if not item.source_category or item.source_category in categories:
+            continue
+        selected.append(item)
+        counts[item.source] += 1
+        categories.add(item.source_category)
+        if len(selected) >= max_items:
+            return True
+    return False
 
-    # Second pass ensures each source can contribute once.
+
+def _select_unrepresented_sources(
+    scored: list[Candidate], max_items: int, selected: list[Candidate], counts: dict[str, int],
+) -> bool:
     for item in scored:
         if item in selected:
             continue
-        if counts[item.source] == 0:
-            selected.append(item); counts[item.source] += 1
-            if len(selected) >= max_items:
-                return selected
+        if counts[item.source] != 0:
+            continue
+        selected.append(item)
+        counts[item.source] += 1
+        if len(selected) >= max_items:
+            return True
+    return False
 
+
+def _fill_source_quotas(
+    scored: list[Candidate], max_items: int, per_source_quota: int,
+    selected: list[Candidate], counts: dict[str, int],
+) -> None:
     for item in scored:
         if item in selected or counts[item.source] >= per_source_quota:
             continue
-        selected.append(item); counts[item.source] += 1
+        selected.append(item)
+        counts[item.source] += 1
         if len(selected) >= max_items:
             break
-    return selected

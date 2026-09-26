@@ -109,7 +109,12 @@ Rules:
     @staticmethod
     def _fallback(item: Candidate) -> RankedItem:
         score = min(1.0, item.heuristic_score)
-        disposition = 'attention' if score >= .72 else 'watch' if score >= .46 else 'background'
+        if score >= .72:
+            disposition = 'attention'
+        elif score >= .46:
+            disposition = 'watch'
+        else:
+            disposition = 'background'
         matched = ', '.join(item.matched_terms[:5]) or 'recency/diversity/history'
         return RankedItem(
             **item.model_dump(), relevance=score, novelty=item.history_novelty,

@@ -198,23 +198,56 @@ class SECSource(Source):
     async def search(self, query, horizon_hours):
         headers={'User-Agent':self.user_agent,'Accept-Encoding':'gzip, deflate'}
         tick=await self.client.get('https://www.sec.gov/files/company_tickers.json',headers=headers); tick.raise_for_status(); terms=query.query.lower().split(); matches=[]
-        for x in tick.json().values():
-            hay=f"{x.get('ticker','')} {x.get('title','')}".lower()
-            if any(t in hay for t in terms if len(t)>=2): matches.append(x)
-            if len(matches)>=3: break
+        matches = _matching_companies(tick.json().values(), terms)
         out=[]; cutoff=datetime.now(timezone.utc)-timedelta(hours=horizon_hours*2)
         for company in matches:
             cik=str(company.get('cik_str','')).zfill(10); r=await self.client.get(f'https://data.sec.gov/submissions/CIK{cik}.json',headers=headers); r.raise_for_status(); recent=(r.json().get('filings') or {}).get('recent') or {}
-            forms=recent.get('form',[])
-            for i, form in enumerate(forms[:80]):
-                when=parse_datetime((recent.get('filingDate') or ['']*len(forms))[i])
-                if when and when<cutoff: continue
-                acc=(recent.get('accessionNumber') or ['']*len(forms))[i]; primary=(recent.get('primaryDocument') or ['']*len(forms))[i]; cik_int=str(int(cik)); acc_no=acc.replace('-','')
-                url=f'https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_no}/{primary}' if acc and primary else f'https://www.sec.gov/edgar/browse/?CIK={cik}'
-                out.append(self.item(title=f"{company.get('ticker')} {form} — {company.get('title')}",url=url,summary=(recent.get('primaryDocDescription') or ['']*len(forms))[i] if recent.get('primaryDocDescription') else '',published_at=when,query=query.query,
-                    metadata={'form':form,'ticker':company.get('ticker'),'company':company.get('title'),'accession':acc},stable_key=acc))
-                if len(out)>=query.limit: return out
+            out.extend(_recent_sec_filings(self, company, recent, query, cutoff))
+            if len(out) >= query.limit:
+                return out[:query.limit]
         return out[:query.limit]
+
+
+def _matching_companies(companies, terms: list[str], limit: int = 3) -> list[dict]:
+    matches = []
+    for company in companies:
+        searchable = f"{company.get('ticker', '')} {company.get('title', '')}".lower()
+        if any(term in searchable for term in terms if len(term) >= 2):
+            matches.append(company)
+            if len(matches) >= limit:
+                break
+    return matches
+
+
+def _recent_sec_filings(source, company: dict, recent: dict, query, cutoff: datetime) -> list[RawItem]:
+    forms = recent.get('form', [])[:80]
+    dates = recent.get('filingDate') or [''] * len(forms)
+    accessions = recent.get('accessionNumber') or [''] * len(forms)
+    documents = recent.get('primaryDocument') or [''] * len(forms)
+    descriptions = recent.get('primaryDocDescription') or [''] * len(forms)
+    cik = str(int(str(company.get('cik_str', '0')).zfill(10)))
+    out = []
+    for index, form in enumerate(forms):
+        filing = _sec_filing_item(source, company, form, dates[index], accessions[index], documents[index],
+                                  descriptions[index], cik, query, cutoff)
+        if filing is not None:
+            out.append(filing)
+    return out
+
+
+def _sec_filing_item(source, company, form, filing_date, accession, document, description, cik, query, cutoff):
+    published = parse_datetime(filing_date)
+    if published and published < cutoff:
+        return None
+    accession_number = accession.replace('-', '')
+    url = (f'https://www.sec.gov/Archives/edgar/data/{cik}/{accession_number}/{document}'
+           if accession and document else f'https://www.sec.gov/edgar/browse/?CIK={cik}')
+    return source.item(
+        title=f"{company.get('ticker')} {form} — {company.get('title')}", url=url,
+        summary=description or '', published_at=published, query=query.query,
+        metadata={'form':form,'ticker':company.get('ticker'),'company':company.get('title'),'accession':accession},
+        stable_key=accession,
+    )
 
 
 class WorldBankSource(Source):
@@ -312,17 +345,42 @@ class GreenhouseSource(Source):
     profile = profile('greenhouse','jobs','Configured Greenhouse public job boards for target-company hiring signals.','primary',False,'jobs')
     def __init__(self,client,boards): super().__init__(client); self.boards=boards
     async def search(self, query, horizon_hours):
-        terms=[t.lower() for t in query.query.split() if len(t)>2]; out=[]
+        terms=[t.lower() for t in query.query.split() if len(t)>2]
+        out=[]
         for board in self.boards:
-            token=board.get('token') if isinstance(board,dict) else str(board); label=board.get('name',token) if isinstance(board,dict) else token
+            token, label = _greenhouse_board(board)
             r=await self.client.get(f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs',params={'content':'true'}); r.raise_for_status()
             for j in r.json().get('jobs',[]):
-                hay=f"{j.get('title','')} {strip_html(j.get('content') or '')} {(j.get('location') or {}).get('name','')}".lower()
-                if terms and not any(t in hay for t in terms): continue
-                out.append(self.item(title=f"{j.get('title','')} — {label}",url=j.get('absolute_url',''),summary=strip_html(j.get('content') or '')[:1800],published_at=parse_datetime(j.get('updated_at')),query=query.query,
-                    metadata={'company':label,'location':(j.get('location') or {}).get('name')},stable_key=f'{token}:{j.get("id")}'))
-                if len(out)>=query.limit: return out
+                if not _greenhouse_matches(j, terms):
+                    continue
+                out.append(_greenhouse_item(self, j, token, label, query))
+                if len(out) >= query.limit:
+                    return out
         return out[:query.limit]
+
+
+def _greenhouse_board(board) -> tuple[str, str]:
+    if isinstance(board, dict):
+        token = board.get('token', '')
+        return token, board.get('name', token)
+    token = str(board)
+    return token, token
+
+
+def _greenhouse_matches(job: dict, terms: list[str]) -> bool:
+    location = (job.get('location') or {}).get('name', '')
+    searchable = f"{job.get('title', '')} {strip_html(job.get('content') or '')} {location}".lower()
+    return not terms or any(term in searchable for term in terms)
+
+
+def _greenhouse_item(source, job: dict, token: str, label: str, query) -> RawItem:
+    location = (job.get('location') or {}).get('name')
+    content = strip_html(job.get('content') or '')
+    return source.item(
+        title=f"{job.get('title', '')} — {label}", url=job.get('absolute_url', ''),
+        summary=content[:1800], published_at=parse_datetime(job.get('updated_at')), query=query.query,
+        metadata={'company':label,'location':location}, stable_key=f'{token}:{job.get("id")}',
+    )
 
 
 class RSSSource(Source):
@@ -331,16 +389,42 @@ class RSSSource(Source):
     async def search(self, query, horizon_hours):
         out=[]; terms=[t.lower() for t in query.query.split() if len(t)>2]
         for feed in self.feeds:
-            url=feed.get('url') if isinstance(feed,dict) else str(feed); label=feed.get('name',url) if isinstance(feed,dict) else url; authority=feed.get('authority') if isinstance(feed,dict) else None
-            try:
-                r=await self.client.get(url); r.raise_for_status()
-            except Exception:
-                continue
-            for e in xml_feed_entries(r.content,url)[:40]:
-                hay=f"{e.get('title','')} {strip_html(e.get('summary',''))}".lower()
-                if terms and not any(t in hay for t in terms): continue
-                item=self.item(title=e.get('title',''),url=e.get('link',''),summary=strip_html(e.get('summary','')),published_at=parse_datetime(e.get('published')),query=query.query,metadata={'feed':label})
-                if authority in ('primary','institutional','community','aggregator','unknown'): item.authority=authority
-                out.append(item)
+            url, label, authority = _rss_feed_details(feed)
+            out.extend(await _read_rss_feed(self, url, label, authority, terms, query))
         out.sort(key=lambda x:x.published_at or datetime.min.replace(tzinfo=timezone.utc),reverse=True)
         return out[:query.limit]
+
+
+def _rss_feed_details(feed) -> tuple[str, str, str | None]:
+    if isinstance(feed, dict):
+        url = feed.get('url', '')
+        return url, feed.get('name', url), feed.get('authority')
+    url = str(feed)
+    return url, url, None
+
+
+def _rss_entry_matches(entry: dict, terms: list[str]) -> bool:
+    searchable = f"{entry.get('title', '')} {strip_html(entry.get('summary', ''))}".lower()
+    return not terms or any(term in searchable for term in terms)
+
+
+async def _read_rss_feed(source, url: str, label: str, authority: str | None, terms: list[str], query):
+    try:
+        response = await source.client.get(url)
+        response.raise_for_status()
+    except Exception:
+        return []
+    items = []
+    for entry in xml_feed_entries(response.content, url)[:40]:
+        if not _rss_entry_matches(entry, terms):
+            continue
+        item = source.item(
+            title=entry.get('title', ''), url=entry.get('link', ''),
+            summary=strip_html(entry.get('summary', '')),
+            published_at=parse_datetime(entry.get('published')), query=query.query,
+            metadata={'feed':label},
+        )
+        if authority in ('primary','institutional','community','aggregator','unknown'):
+            item.authority = authority
+        items.append(item)
+    return items

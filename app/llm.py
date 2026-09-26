@@ -47,18 +47,40 @@ class OpenAICompatibleLLM:
     @classmethod
     def _response_text(cls, response: httpx.Response) -> str:
         body = response.text
-        is_sse = (
-            'text/event-stream' in response.headers.get('content-type', '').lower()
-            or any(line.startswith(('event:', 'data:')) for line in body.splitlines())
+        if not cls._is_sse(response, body):
+            return cls._json_response_text(response)
+        return cls._stream_response_text(body)
+
+    @staticmethod
+    def _is_sse(response: httpx.Response, body: str) -> bool:
+        content_type = response.headers.get('content-type', '').lower()
+        return 'text/event-stream' in content_type or any(
+            line.startswith(('event:', 'data:')) for line in body.splitlines()
         )
-        if not is_sse:
-            content = cls._output_text(response.json())
+
+    @classmethod
+    def _json_response_text(cls, response: httpx.Response) -> str:
+        content = cls._output_text(response.json())
+        if content:
+            return content
+        raise LLMUnavailable('Responses API returned no text output')
+
+    @classmethod
+    def _stream_response_text(cls, body: str) -> str:
+        events = list(cls._stream_events(body))
+        if any(event.get('type') == 'response.failed' for event in events):
+            raise LLMUnavailable('Responses API stream failed')
+        deltas = [event['delta'] for event in events if cls._is_text_delta(event)]
+        if deltas:
+            return ''.join(deltas)
+        for event in reversed(events):
+            content = cls._completed_text(event)
             if content:
                 return content
-            raise LLMUnavailable('Responses API returned no text output')
+        raise LLMUnavailable('Responses API stream returned no text output')
 
-        deltas: list[str] = []
-        completed_text = ''
+    @staticmethod
+    def _stream_events(body: str):
         for line in body.splitlines():
             if not line.startswith('data:'):
                 continue
@@ -69,20 +91,21 @@ class OpenAICompatibleLLM:
                 event = json.loads(data)
             except json.JSONDecodeError:
                 continue
-            if event.get('type') == 'response.output_text.delta':
-                delta = event.get('delta')
-                if isinstance(delta, str):
-                    deltas.append(delta)
-            elif event.get('type') == 'response.output_text.done' and isinstance(event.get('text'), str):
-                completed_text = event['text']
-            elif event.get('type') == 'response.completed':
-                completed_text = cls._output_text(event.get('response', {})) or completed_text
-            elif event.get('type') == 'response.failed':
-                raise LLMUnavailable('Responses API stream failed')
-        content = ''.join(deltas) or completed_text
-        if not content:
-            raise LLMUnavailable('Responses API stream returned no text output')
-        return content
+            if isinstance(event, dict):
+                yield event
+
+    @staticmethod
+    def _is_text_delta(event: dict[str, Any]) -> bool:
+        return event.get('type') == 'response.output_text.delta' and isinstance(event.get('delta'), str)
+
+    @classmethod
+    def _completed_text(cls, event: dict[str, Any]) -> str:
+        if event.get('type') == 'response.output_text.done':
+            text = event.get('text')
+            return text if isinstance(text, str) else ''
+        if event.get('type') == 'response.completed':
+            return cls._output_text(event.get('response', {}))
+        return ''
 
     @staticmethod
     def _output_text(payload: Any) -> str:
@@ -91,19 +114,21 @@ class OpenAICompatibleLLM:
         direct = payload.get('output_text')
         if isinstance(direct, str) and direct:
             return direct
-        parts: list[str] = []
         output = payload.get('output')
         if not isinstance(output, list):
             return ''
-        for item in output:
-            if not isinstance(item, dict) or item.get('type') != 'message':
-                continue
-            content = item.get('content')
-            if not isinstance(content, list):
-                continue
-            for part in content:
-                if isinstance(part, dict) and part.get('type') in {'output_text', 'text'}:
-                    text = part.get('text')
-                    if isinstance(text, str):
-                        parts.append(text)
-        return ''.join(parts)
+        return ''.join(OpenAICompatibleLLM._message_text(item) for item in output)
+
+    @staticmethod
+    def _message_text(item: Any) -> str:
+        if not isinstance(item, dict) or item.get('type') != 'message':
+            return ''
+        content = item.get('content')
+        if not isinstance(content, list):
+            return ''
+        return ''.join(
+            part['text'] for part in content
+            if isinstance(part, dict)
+            and part.get('type') in {'output_text', 'text'}
+            and isinstance(part.get('text'), str)
+        )
