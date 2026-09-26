@@ -4,46 +4,86 @@
 [![SonarQube Cloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=coverage)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage)
 
-> Expand machine observation. Shrink human attention load.
+> Expand machine observation. Shrink human attention load. Preserve the ability to notice that your model of the world is becoming stale.
 
-`attention-leverage` is a goal-driven information system built around a strict pipeline:
+`attention-leverage` is a goal-driven information and cognitive-calibration system.
 
 ```text
 input
   ↓
-model understanding
+model understanding + current assumptions + long-term coverage history
   ↓
-goal-driven querying across heterogeneous sources
+goal / blind-spot / counterevidence / environment / verification queries
   ↓
-deterministic program filtering
+heterogeneous public information sources
   ↓
-model semantic screening
+deterministic compression
   ↓
-small decision-oriented output
+semantic qualification
+  ↓
+attention output + cognitive map
 ```
 
-The product objective is not “read more with AI.” It is the opposite: let machines search much more widely while allowing very little to reach human attention.
+The system is deliberately not an infinite feed. Its purpose is to let machines search much more broadly while letting very little reach human attention.
 
-## What the current version adds
+## The four calibration questions
 
-This version turns the original prototype into a persistent personal attention layer:
+Every run can now answer four separate questions:
 
-- dynamic model-generated `QueryPlan` instead of a fixed subscription list;
-- 20 built-in sources enabled without paid credentials, spanning fundamentally different information-generation mechanisms;
-- optional SEC, ReliefWeb and configured Greenhouse job boards;
-- configurable RSS/Atom long-tail feeds;
-- deterministic deduplication, freshness filtering, exclusion rules, lexical relevance, category diversity and per-source quotas;
-- persistent SQLite history so repeated information gets lower novelty on later runs;
-- model screening that explicitly separates relevance, novelty, importance, actionability and confidence;
-- source authority classes (`primary`, `institutional`, `community`, `aggregator`) carried into the final judgment;
-- source-health tracking and graceful partial failure;
-- user feedback that gradually adjusts source weights;
-- saved goals and a CLI suitable for cron/systemd/GitHub Actions scheduling;
-- run history and a dashboard for current results, previous runs and source health.
+1. **What have you probably not seen for a long time?**
+   - Based on search/observation coverage, not unsupported psychological inference.
+   - The system distinguishes `not searched` from `searched but no result`.
+
+2. **Which environments are farthest from your current information exposure?**
+   - An environment is modeled as people + institutions/places + entry points + default rules + paths + timing + connectors/trust + costs/substitutes.
+   - The output tries to identify legal/public/low-cost entry points rather than merely describing status symbols.
+
+3. **Which changes could force you to reinterpret the present?**
+   - The old frame and new possible frame are stored separately.
+   - A new interpretation remains provisional until evidence is sufficient.
+
+4. **Which signals indicate that an existing model is failing?**
+   - Users can save explicit falsifiable working assumptions.
+   - The semantic layer can attach counter-signals to those assumptions and mark them challenged.
+   - No contradiction is manufactured when evidence is weak.
+
+## Query modes
+
+The first model call produces a `QueryPlan` whose routes carry a mode:
+
+- `goal` — directly answer the current objective;
+- `blindspot` — probe categories/environments with little observation history;
+- `counterevidence` — search for evidence that would falsify a working assumption;
+- `environment` — map people, institutions, entry points, rules, paths and timing;
+- `verification` — confirm a consequential weak signal with stronger evidence.
+
+This prevents the system from becoming a pure confirmation engine.
+
+## Long-term cognitive state
+
+SQLite persists more than article history:
+
+- item identity and repeat count;
+- query history, source category, query purpose and result count;
+- source health;
+- saved goals;
+- useful / irrelevant feedback;
+- explicit working assumptions;
+- assumption challenge timestamps;
+- recurring distant environments;
+- run-level cognitive maps.
+
+The coverage ledger makes a critical distinction:
+
+```text
+never searched ≠ searched and found nothing ≠ repeatedly observed
+```
+
+A failed source or empty query is therefore not silently converted into evidence of absence.
 
 ## Source pool
 
-The default pool covers these mechanisms:
+The default pool now includes 25+ built-in public sources spanning different information-generation mechanisms.
 
 | Domain | Sources |
 | --- | --- |
@@ -55,78 +95,67 @@ The default pool covers these mechanisms:
 | Regulation / public institutions | Federal Register, World Bank |
 | Cybersecurity | CISA KEV, NIST NVD |
 | Natural hazards | USGS earthquakes, NASA EONET |
-| Long-tail / trusted sources | configurable RSS/Atom |
+| People / institutions | OpenAlex Authors, OpenAlex Institutions |
+| Structured entities | Wikidata |
+| Foundations / associations / nonprofits | ProPublica Nonprofit Explorer |
+| Grants / fellowships / opportunity timing | Grants.gov |
+| Long-tail official/niche environments | configurable RSS/Atom |
 | Optional corporate disclosure | SEC EDGAR (`SEC_USER_AGENT`) |
 | Optional humanitarian reporting | ReliefWeb (`RELIEFWEB_APPNAME`) |
-| Optional hiring signals | configured Greenhouse public job boards |
+| Optional target-company hiring | configured Greenhouse public job boards |
 
-This is deliberately heterogeneous. Ten versions of the same news story do not count as ten independent sources.
+Ten news outlets repeating the same story are not treated as ten distinct information mechanisms.
 
-## Architecture
+## Environment model
 
-### 1. Input → model understanding
+When the evidence supports it, the semantic layer can produce an `EnvironmentInsight` containing:
 
-The first model call does not answer the user. It creates a search plan:
+- environment name and why it is cognitively distant;
+- public/legal entry points;
+- hidden/default rules visible in public behavior;
+- connector roles rather than only famous people;
+- common paths and transitions;
+- application/seasonal timing;
+- lower-cost substitutes or peripheral entry routes;
+- evidence item IDs.
 
-- operational goal;
-- time horizon;
-- high-signal terms and exclusions;
-- the kinds of evidence that would change the decision;
-- source-specific queries;
-- unknowns that need discrimination;
-- stopping conditions.
+This is intended to answer questions such as:
 
-It is the *search-space expansion* step.
+> Where do people in this environment naturally meet?  
+> Who actually connects newcomers?  
+> What do insiders assume everyone already knows?  
+> Which opportunities appear before they become obvious?  
+> Which nominal barriers are real, and which have alternative public routes?
 
-### 2. Goal-driven source routing
+## Deterministic compression
 
-Each source advertises metadata such as category, authority class and signal type. The planner can therefore combine, for example:
+Before the second model call, code handles cheap and inspectable work:
 
-- a social weak-signal source to discover a new issue;
-- a regulatory or registry source to verify whether the issue is real;
-- a research source to test whether the mechanism is credible.
-
-The fallback planner remains usable without a model and chooses one source per category instead of blindly querying everything.
-
-### 3. Deterministic compression
-
-Before model judgment, code handles work that should be cheap and inspectable:
-
-- canonical URL deduplication;
-- near-duplicate title removal;
+- URL and near-title deduplication;
 - freshness windows;
-- explicit exclusion terms;
+- exclusion terms;
 - lexical relevance;
 - history novelty;
-- source feedback weighting;
-- authority weighting;
+- source feedback weights;
+- authority context;
 - category diversity;
 - per-source quotas.
 
-### 4. Semantic qualification
+The model therefore sees a compressed candidate set instead of the raw firehose.
 
-The second model call sees only the compressed candidate set and decides:
+## Semantic qualification
+
+Each candidate is evaluated on:
 
 - relevance;
 - novelty;
 - importance;
 - actionability;
 - confidence;
-- `attention | watch | background`.
+- **model pressure** — how strongly it strains an existing interpretation;
+- **environment distance** — whether it exposes a structurally unfamiliar environment.
 
-It also returns a compact digest: what changed, possible bounded actions and unresolved uncertainty.
-
-### 5. Persistence and learning
-
-SQLite stores:
-
-- runs and their output;
-- observed item identities and seen counts;
-- source health;
-- saved goals;
-- useful / irrelevant feedback.
-
-History changes the meaning of novelty: an item that repeatedly reappears is not treated as “new” simply because it was fetched again.
+The final output remains `attention | watch | background`, but decision-changing counterevidence and newly reachable environments can now rise even when they are not the most familiar topic.
 
 ## Run
 
@@ -142,57 +171,70 @@ uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000`.
 
-The local configuration uses `gpt-6-luna` through the Responses endpoint exposed by
-`llm-gateway`'s Agent listener. The listener address is defined by
-`llm-gateway/config/gateway.json`; update `OPENAI_BASE_URL` in `.env` if that
-checkout uses a different host or port:
+The current model client uses an OpenAI-compatible Responses API endpoint:
 
 ```bash
-OPENAI_API_KEY=local-gateway
+OPENAI_API_KEY=...
 OPENAI_BASE_URL=http://127.0.0.1:4101/v1
-OPENAI_MODEL=gpt-6-luna
+OPENAI_MODEL=...
 LLM_TIMEOUT_SECONDS=90
 ```
 
-The client uses `/responses` and reads streamed text output. Without model
-configuration, source routing and ranking use deterministic fallbacks.
+Without model configuration, routing, ranking and basic coverage/blind-spot output still work through deterministic fallbacks.
+
+## Dashboard
+
+The web UI has four surfaces:
+
+- **运行** — current digest, cognitive map and attention-ranked items;
+- **认知地图** — low-coverage categories, recurring distant environments and explicit assumptions;
+- **历史** — previous runs and how many model/environment challenges they produced;
+- **信息源** — current source pool and health.
+
+## Working assumptions
+
+The API/UI can save explicit falsifiable assumptions:
+
+```text
+POST /api/assumptions
+GET  /api/assumptions
+DELETE /api/assumptions/{id}
+```
+
+When a run returns evidence-bound model challenges, matching assumptions are marked `challenged` with a timestamp rather than automatically declared false.
 
 ## CLI and scheduled use
 
-Run one ad-hoc goal:
-
 ```bash
-attention-leverage "过去 48 小时有哪些变化可能改变我对 AI agent 基础设施的判断？"
-```
-
-Run a saved goal:
-
-```bash
+attention-leverage "哪些公开入口能让我理解某个陌生行业的实际关系结构？"
 attention-leverage --saved "agent-infra"
-```
-
-Run every enabled saved goal, suitable for cron:
-
-```bash
 attention-leverage --saved '*' --json > latest.json
 ```
 
-Scheduling is intentionally outside the semantic core: cron, systemd timers, GitHub Actions or another scheduler can invoke the same deterministic pipeline.
+Text CLI output includes:
 
-## Adding long-tail sources
+- long-unseen areas;
+- distant environments;
+- reinterpretation triggers;
+- model challenges;
+- attention-ranked items.
 
-`config/sources.toml` can add RSS/Atom feeds with an authority hint:
+Scheduling remains outside the semantic core: cron, systemd timers, GitHub Actions or another scheduler can call the same pipeline.
+
+## Adding long-tail environments
+
+Use `config/sources.toml` for schools, associations, foundations, conferences, company changelogs, alumni organizations and other public RSS/Atom sources:
 
 ```toml
 [sources.rss]
 enabled = true
 feeds = [
-  { name = "Official agency", url = "https://example.gov/feed.xml", authority = "primary" },
-  { name = "Niche community", url = "https://example.org/rss", authority = "community" },
+  { name = "Official association", url = "https://example.org/feed.xml", authority = "primary" },
+  { name = "Niche community", url = "https://community.example/rss", authority = "community" },
 ]
 ```
 
-Greenhouse boards can be added similarly:
+Configured Greenhouse boards can provide target-company hiring signals:
 
 ```toml
 [sources.greenhouse]
@@ -202,13 +244,17 @@ boards = [
 ]
 ```
 
-## Important boundaries
+## Boundaries
 
-- Discovery is not verification. A social post and an official filing are not semantically equivalent.
-- Provider success is not evidence that reality changed.
-- More sources do not justify more human reading.
-- Missing or failed sources remain explicit uncertainty; they do not become evidence of absence.
-- Feedback changes source weighting only mildly. It must not silently create an information bubble.
+- Discovery is not verification.
+- Public information is not necessarily effectively visible to a newcomer.
+- A social signal and a primary filing are not semantically equivalent.
+- An empty search is not proof of absence.
+- Cognitive distance is inferred from system search/observation history, not from sensitive personal attributes.
+- The system must not infer class, race, politics, health, religion or other sensitive traits from information coverage.
+- Feedback only adjusts source weighting mildly; it must not silently create an information bubble.
+- A challenged assumption is not automatically false.
+- A plausible reinterpretation is not automatically reality.
 
 ## Tests
 
@@ -216,4 +262,4 @@ boards = [
 pytest -q
 ```
 
-CI also compiles the application before running tests.
+CI compiles the application, runs coverage tests and then runs SonarQube Cloud on pushes to `main`.
