@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<1"]
+dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<1", "pytest-cov>=6,<8"]
 
 [project.scripts]
 attention-leverage = "app.cli:main"

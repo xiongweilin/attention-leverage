@@ -1,5 +1,9 @@
 # attention-leverage
 
+[![CI](https://github.com/xiongweilin/attention-leverage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/xiongweilin/attention-leverage/actions/workflows/ci.yml)
+[![SonarQube Cloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=coverage)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage)
+
 > Expand machine observation. Shrink human attention load.
 
 `attention-leverage` is a goal-driven information system built around a strict pipeline:
