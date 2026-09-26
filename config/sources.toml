@@ -1,32 +1,63 @@
-[defaults]
-max_results_per_query = 12
-
+# Built-in source switches. Sources requiring credentials/config are registered only when configured.
 [sources.google_news]
 enabled = true
-
 [sources.gdelt]
 enabled = true
-
 [sources.hackernews]
 enabled = true
-
+[sources.bluesky]
+enabled = true
 [sources.github]
 enabled = true
-
-[sources.openalex]
+[sources.npm]
 enabled = true
-
-[sources.arxiv]
+[sources.crates]
 enabled = true
-
-[sources.crossref]
-enabled = true
-
 [sources.stackexchange]
 enabled = true
+[sources.openalex]
+enabled = true
+[sources.arxiv]
+enabled = true
+[sources.crossref]
+enabled = true
+[sources.europepmc]
+enabled = true
+[sources.clinicaltrials]
+enabled = true
+[sources.federal_register]
+enabled = true
+[sources.worldbank]
+enabled = true
+[sources.cisa_kev]
+enabled = true
+[sources.nvd]
+enabled = true
+[sources.usgs]
+enabled = true
+[sources.nasa_eonet]
+enabled = true
 
-# Add any RSS/Atom feeds you trust. They are fetched every run and then filtered
-# against the current goal. This is useful for official sources and niche feeds.
+# Generic long-tail source pool. Add official agencies, journals, company blogs,
+# changelogs, local communities, newsletters, central banks, etc.
 [sources.rss]
 enabled = true
 feeds = []
+# Example:
+# feeds = [
+#   { name = "Example official feed", url = "https://example.com/feed.xml", authority = "primary" },
+# ]
+
+# Optional company hiring signal. Board data is public, but board tokens must be configured.
+[sources.greenhouse]
+enabled = true
+boards = []
+# boards = [{ name = "Example", token = "example" }]
+
+# SEC is registered when SEC_USER_AGENT is set in .env.
+[sources.sec]
+enabled = true
+
+# ReliefWeb is registered when RELIEFWEB_APPNAME is set in .env.
+[sources.reliefweb]
+enabled = true
