@@ -298,7 +298,7 @@ class Store:
     @staticmethod
     def _record_environments(db: sqlite3.Connection, cognitive: CognitiveMap, now: str) -> None:
         for environment in cognitive.distant_environments:
-            key = hashlib.sha1(environment.name.strip().lower().encode('utf-8')).hexdigest()[:20]
+            key = hashlib.sha256(environment.name.strip().lower().encode('utf-8')).hexdigest()[:20]
             payload = environment.model_dump_json()
             db.execute('''
                 INSERT INTO environments(environment_key,name,first_seen,last_seen,times_seen,max_distance,payload_json)
@@ -396,7 +396,7 @@ class Store:
     def save_assumption(self, assumption: AssumptionInput, *, origin: str = 'user') -> Assumption:
         now = datetime.now(timezone.utc).isoformat()
         key_material = f'{assumption.scope.strip().lower()}\0{assumption.statement.strip().lower()}'
-        assumption_id = hashlib.sha1(key_material.encode('utf-8')).hexdigest()[:16]
+        assumption_id = hashlib.sha256(key_material.encode('utf-8')).hexdigest()[:16]
         with self._lock, self._connection() as db:
             db.execute('''
                 INSERT INTO assumptions(
