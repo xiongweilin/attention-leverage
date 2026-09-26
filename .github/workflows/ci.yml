@@ -26,3 +26,9 @@ jobs:
           args: >
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
+      - name: Report current Sonar quality gate
+        if: always()
+        run: >
+          curl --fail --silent
+          'https://sonarcloud.io/api/qualitygates/project_status?projectKey=metratio_attention-leverage&branch=main'
+          | python -m json.tool || true
