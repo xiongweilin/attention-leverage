@@ -23,23 +23,23 @@ class OpenAICompatibleLLM:
 
     async def json(self, system: str, user: str) -> dict[str, Any]:
         if not self.available:
-            raise LLMUnavailable("OPENAI_API_KEY is not configured")
-
-        url = f"{self.settings.openai_base_url}/chat/completions"
-        headers = {"Authorization": f"Bearer {self.settings.openai_api_key}"}
-        payload = {
-            "model": self.settings.openai_model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0.1,
-            "response_format": {"type": "json_object"},
-        }
-        response = await self.client.post(url, headers=headers, json=payload)
+            raise LLMUnavailable('OPENAI_API_KEY is not configured')
+        response = await self.client.post(
+            f'{self.settings.openai_base_url}/chat/completions',
+            headers={'Authorization': f'Bearer {self.settings.openai_api_key}'},
+            json={
+                'model': self.settings.openai_model,
+                'messages': [
+                    {'role': 'system', 'content': system},
+                    {'role': 'user', 'content': user},
+                ],
+                'temperature': 0.1,
+                'response_format': {'type': 'json_object'},
+            },
+        )
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        content = response.json()['choices'][0]['message']['content']
         try:
             return json.loads(content)
         except json.JSONDecodeError as exc:
-            raise LLMUnavailable("Model did not return valid JSON") from exc
+            raise LLMUnavailable('Model did not return valid JSON') from exc
