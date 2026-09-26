@@ -32,3 +32,9 @@ jobs:
           curl --fail --silent
           'https://sonarcloud.io/api/qualitygates/project_status?projectKey=metratio_attention-leverage&branch=main'
           | python -m json.tool || true
+      - name: Report current Sonar vulnerabilities
+        if: always()
+        run: >
+          curl --fail --silent
+          'https://sonarcloud.io/api/issues/search?componentKeys=metratio_attention-leverage&branch=main&types=VULNERABILITY&statuses=OPEN,CONFIRMED,REOPENED&ps=100'
+          | python -m json.tool || true
