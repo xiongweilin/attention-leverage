@@ -41,7 +41,7 @@ async def test_model_plan_filters_unknown_sources_overrides_horizon_and_receives
 
         async def json(self, system, user):
             assert 'Available sources:' in system
-            assert 'Calibration questions' in system
+            assert 'four calibration questions' in system
             assert '"assumptions"' in system
             assert user == 'watch agent releases'
             return {
