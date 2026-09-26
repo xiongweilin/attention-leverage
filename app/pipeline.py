@@ -5,7 +5,7 @@ import asyncio
 import httpx
 
 from .config import Settings
-from .filtering import deterministic_filter
+from .filtering import balanced_cap, deterministic_filter
 from .llm import OpenAICompatibleLLM
 from .models import RawItem, RunRequest, RunResult
 from .planner import GoalPlanner
@@ -33,7 +33,7 @@ class AttentionPipeline:
             if error:
                 errors[source_name] = error
             raw.extend(items)
-        raw = raw[: self.settings.max_raw_items]
+        raw = balanced_cap(raw, self.settings.max_raw_items)
 
         filtered = deterministic_filter(
             raw,
