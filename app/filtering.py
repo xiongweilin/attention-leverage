@@ -103,3 +103,22 @@ def deterministic_filter(
         if len(selected) >= max_items:
             break
     return selected
+
+
+def balanced_cap(items: list[RawItem], limit: int) -> list[RawItem]:
+    if len(items) <= limit:
+        return items
+    buckets: dict[str, list[RawItem]] = {}
+    for item in items:
+        buckets.setdefault(item.source, []).append(item)
+    out: list[RawItem] = []
+    while len(out) < limit and buckets:
+        for source in list(buckets):
+            bucket = buckets[source]
+            if bucket:
+                out.append(bucket.pop(0))
+                if len(out) >= limit:
+                    break
+            if not bucket:
+                buckets.pop(source, None)
+    return out
