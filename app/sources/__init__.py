@@ -11,6 +11,10 @@ from .builtin import (
     NvdSource, OpenAlexSource, RSSSource, ReliefWebSource, SECSource, StackExchangeSource,
     UsgsSource, WorldBankSource,
 )
+from .environment import (
+    GrantsGovSource, OpenAlexAuthorsSource, OpenAlexInstitutionsSource,
+    ProPublicaNonprofitsSource, WikidataSource,
+)
 
 
 def build_sources(client: httpx.AsyncClient, settings: Settings) -> dict[str, Source]:
@@ -18,16 +22,31 @@ def build_sources(client: httpx.AsyncClient, settings: Settings) -> dict[str, So
     feeds = cfg.get('rss', {}).get('feeds', [])
     boards = cfg.get('greenhouse', {}).get('boards', [])
     candidates: dict[str, Source] = {
-        'google_news': GoogleNewsSource(client), 'gdelt': GDELTSource(client),
-        'hackernews': HackerNewsSource(client), 'bluesky': BlueskySource(client),
-        'github': GitHubSource(client, settings.github_token), 'npm': NpmSource(client),
-        'crates': CratesSource(client), 'stackexchange': StackExchangeSource(client),
-        'openalex': OpenAlexSource(client), 'arxiv': ArxivSource(client),
-        'crossref': CrossrefSource(client), 'europepmc': EuropePMCSource(client),
-        'clinicaltrials': ClinicalTrialsSource(client), 'federal_register': FederalRegisterSource(client),
-        'worldbank': WorldBankSource(client), 'cisa_kev': CisaKevSource(client),
-        'nvd': NvdSource(client, settings.nvd_api_key), 'usgs': UsgsSource(client),
-        'nasa_eonet': NasaEonetSource(client), 'rss': RSSSource(client, feeds),
+        'google_news': GoogleNewsSource(client),
+        'gdelt': GDELTSource(client),
+        'hackernews': HackerNewsSource(client),
+        'bluesky': BlueskySource(client),
+        'github': GitHubSource(client, settings.github_token),
+        'npm': NpmSource(client),
+        'crates': CratesSource(client),
+        'stackexchange': StackExchangeSource(client),
+        'openalex': OpenAlexSource(client),
+        'arxiv': ArxivSource(client),
+        'crossref': CrossrefSource(client),
+        'europepmc': EuropePMCSource(client),
+        'clinicaltrials': ClinicalTrialsSource(client),
+        'federal_register': FederalRegisterSource(client),
+        'worldbank': WorldBankSource(client),
+        'cisa_kev': CisaKevSource(client),
+        'nvd': NvdSource(client, settings.nvd_api_key),
+        'usgs': UsgsSource(client),
+        'nasa_eonet': NasaEonetSource(client),
+        'wikidata': WikidataSource(client),
+        'openalex_authors': OpenAlexAuthorsSource(client),
+        'openalex_institutions': OpenAlexInstitutionsSource(client),
+        'propublica_nonprofits': ProPublicaNonprofitsSource(client),
+        'grants_gov': GrantsGovSource(client),
+        'rss': RSSSource(client, feeds),
     }
     if settings.sec_user_agent:
         candidates['sec'] = SECSource(client, settings.sec_user_agent)
