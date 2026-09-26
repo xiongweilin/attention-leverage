@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "attention-leverage"
-version = "0.3.0"
-description = "Goal-driven heterogeneous information aggregation that expands machine observation while shrinking human attention load."
+version = "0.4.0"
+description = "Goal-driven heterogeneous information aggregation with persistent cognitive calibration."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
