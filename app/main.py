@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from .config import ROOT, Settings
-from .models import FeedbackRequest, RunRequest, RunResult, SavedGoal
+from .models import AssumptionInput, FeedbackRequest, RunRequest, RunResult, SavedGoal
 from .pipeline import AttentionPipeline
 from .store import Store
 
@@ -20,14 +20,15 @@ templates = Jinja2Templates(directory=str(ROOT / 'app' / 'templates'))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with httpx.AsyncClient(
-        timeout=settings.request_timeout_seconds, follow_redirects=True,
-        headers={'User-Agent': 'attention-leverage/0.3 (+https://github.com/xiongweilin/attention-leverage)'},
+        timeout=settings.request_timeout_seconds,
+        follow_redirects=True,
+        headers={'User-Agent': 'attention-leverage/0.4 (+https://github.com/xiongweilin/attention-leverage)'},
     ) as client:
         app.state.pipeline = AttentionPipeline(client, settings, store)
         yield
 
 
-app = FastAPI(title='Attention Leverage', version='0.3.0', lifespan=lifespan)
+app = FastAPI(title='Attention Leverage', version='0.4.0', lifespan=lifespan)
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -38,15 +39,24 @@ async def index(request: Request):
 @app.get('/api/health')
 async def health(request: Request):
     p: AttentionPipeline = request.app.state.pipeline
-    return {'ok': True, 'sources': len(p.sources), 'llm_configured': p.llm.available,
-            'database': settings.database_path}
+    return {
+        'ok': True,
+        'sources': len(p.sources),
+        'llm_configured': p.llm.available,
+        'database': settings.database_path,
+    }
 
 
 @app.get('/api/sources')
 async def sources(request: Request):
     p: AttentionPipeline = request.app.state.pipeline
     health_map = {x['source']: x for x in store.health()}
-    return {'sources': [profile.model_dump() | {'health': health_map.get(name)} for name, profile in p.profiles.items()]}
+    return {
+        'sources': [
+            profile.model_dump() | {'health': health_map.get(name)}
+            for name, profile in p.profiles.items()
+        ]
+    }
 
 
 @app.post('/api/run', response_model=RunResult)
@@ -88,4 +98,36 @@ async def save_goal(goal: SavedGoal):
 @app.delete('/api/goals/{name}')
 async def delete_goal(name: str):
     store.delete_goal(name)
+    return {'ok': True}
+
+
+@app.get('/api/coverage')
+async def coverage(days: int = 90):
+    return {'coverage': store.coverage(max(1, min(days, 3650)))}
+
+
+@app.get('/api/cognitive-map')
+async def cognitive_map(request: Request):
+    p: AttentionPipeline = request.app.state.pipeline
+    return store.cognitive_overview(p.profiles)
+
+
+@app.get('/api/environments')
+async def environments(limit: int = 50):
+    return {'environments': store.environments(max(1, min(limit, 200)))}
+
+
+@app.get('/api/assumptions')
+async def assumptions():
+    return {'assumptions': [a.model_dump() for a in store.list_assumptions()]}
+
+
+@app.post('/api/assumptions')
+async def save_assumption(body: AssumptionInput):
+    return {'assumption': store.save_assumption(body).model_dump()}
+
+
+@app.delete('/api/assumptions/{assumption_id}')
+async def delete_assumption(assumption_id: str):
+    store.delete_assumption(assumption_id)
     return {'ok': True}
