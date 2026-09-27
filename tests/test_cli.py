@@ -45,7 +45,7 @@ def _prepare_cli(monkeypatch, tmp_path, prompts):
     observed = []
 
     class FakePipeline:
-        def __init__(self, client, pipeline_settings, pipeline_store):
+        def __init__(self, client, pipeline_settings, pipeline_store, direct_client=None):
             pass
 
         async def run(self, request):
