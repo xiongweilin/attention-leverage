@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
@@ -346,16 +347,15 @@ class GreenhouseSource(Source):
     def __init__(self,client,boards): super().__init__(client); self.boards=boards
     async def search(self, query, horizon_hours):
         terms=[t.lower() for t in query.query.split() if len(t)>2]
-        out=[]
-        for board in self.boards:
-            token, label = _greenhouse_board(board)
-            r=await self.client.get(f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs',params={'content':'true'}); r.raise_for_status()
-            for j in r.json().get('jobs',[]):
-                if not _greenhouse_matches(j, terms):
-                    continue
-                out.append(_greenhouse_item(self, j, token, label, query))
-                if len(out) >= query.limit:
-                    return out
+        semaphore=asyncio.Semaphore(6)
+
+        async def read_board(board):
+            async with semaphore:
+                return await _read_greenhouse_board(self, board, terms, query)
+
+        batches=await asyncio.gather(*(read_board(board) for board in self.boards))
+        out=[item for batch in batches for item in batch]
+        out.sort(key=lambda x:x.published_at or datetime.min.replace(tzinfo=timezone.utc),reverse=True)
         return out[:query.limit]
 
 
@@ -373,6 +373,25 @@ def _greenhouse_matches(job: dict, terms: list[str]) -> bool:
     return not terms or any(term in searchable for term in terms)
 
 
+async def _read_greenhouse_board(source, board, terms: list[str], query) -> list[RawItem]:
+    token, label = _greenhouse_board(board)
+    if not token:
+        return []
+    try:
+        response = await source.client.get(
+            f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs',
+            params={'content':'true'},
+        )
+        response.raise_for_status()
+    except Exception:
+        return []
+    return [
+        _greenhouse_item(source, job, token, label, query)
+        for job in response.json().get('jobs', [])
+        if _greenhouse_matches(job, terms)
+    ]
+
+
 def _greenhouse_item(source, job: dict, token: str, label: str, query) -> RawItem:
     location = (job.get('location') or {}).get('name')
     content = strip_html(job.get('content') or '')
@@ -387,10 +406,16 @@ class RSSSource(Source):
     profile = profile('rss','trusted_feeds','Configured RSS/Atom feeds for official, niche and long-tail sources.','unknown',False,'feed')
     def __init__(self,client,feeds): super().__init__(client); self.feeds=feeds
     async def search(self, query, horizon_hours):
-        out=[]; terms=[t.lower() for t in query.query.split() if len(t)>2]
-        for feed in self.feeds:
+        terms=[t.lower() for t in query.query.split() if len(t)>2]
+        semaphore=asyncio.Semaphore(8)
+
+        async def read_feed(feed):
             url, label, authority = _rss_feed_details(feed)
-            out.extend(await _read_rss_feed(self, url, label, authority, terms, query))
+            async with semaphore:
+                return await _read_rss_feed(self, url, label, authority, terms, query)
+
+        batches=await asyncio.gather(*(read_feed(feed) for feed in self.feeds))
+        out=[item for batch in batches for item in batch]
         out.sort(key=lambda x:x.published_at or datetime.min.replace(tzinfo=timezone.utc),reverse=True)
         return out[:query.limit]
 
