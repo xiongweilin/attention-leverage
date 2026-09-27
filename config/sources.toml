@@ -50,24 +50,66 @@ enabled = true
 [sources.grants_gov]
 enabled = true
 
-# Generic long-tail source pool. Add official agencies, journals, company blogs,
-# changelogs, local communities, newsletters, central banks, schools, foundations,
-# associations, conferences and membership organizations.
+# Curated public RSS/Atom source pool.
+# These endpoints were re-checked against their official publishers on 2026-09-27.
+# They intentionally mix regulators, central banks, market structure, engineering
+# ecosystems and primary institutional announcements.
 [sources.rss]
 enabled = true
-feeds = []
-# Example:
-# feeds = [
-#   { name = "Example official feed", url = "https://example.com/feed.xml", authority = "primary" },
-# ]
+feeds = [
+  # Monetary policy / macro / financial-system structure.
+  { name = "Federal Reserve — Press Releases", url = "https://www.federalreserve.gov/feeds/press_all.xml", authority = "primary" },
+  { name = "Federal Reserve — Speeches", url = "https://www.federalreserve.gov/feeds/speeches.xml", authority = "primary" },
+  { name = "Federal Reserve — Working Papers", url = "https://www.federalreserve.gov/feeds/working_papers.xml", authority = "primary" },
+  { name = "Federal Reserve — FEDS Notes", url = "https://www.federalreserve.gov/feeds/feds_notes.xml", authority = "primary" },
+  { name = "BIS — Statistics Release Calendar", url = "https://data.bis.org/feed.xml", authority = "primary" },
 
-# Optional company hiring signal. Board data is public, but board tokens must be configured.
+  # Securities regulation / filings / enforcement.
+  { name = "SEC — Press Releases", url = "https://www.sec.gov/news/pressreleases.rss", authority = "primary" },
+  { name = "SEC — Speeches and Statements", url = "https://www.sec.gov/news/speeches-statements.rss", authority = "primary" },
+  { name = "SEC — Litigation Releases", url = "https://www.sec.gov/enforcement-litigation/litigation-releases/rss", authority = "primary" },
+  { name = "SEC — Administrative Proceedings", url = "https://www.sec.gov/enforcement-litigation/administrative-proceedings/rss", authority = "primary" },
+  { name = "SEC — Trading Suspensions", url = "https://www.sec.gov/enforcement-litigation/trading-suspensions/rss", authority = "primary" },
+  { name = "SEC — Latest XBRL Filings", url = "https://www.sec.gov/Archives/edgar/xbrlrss.all.xml", authority = "primary" },
+  { name = "SEC — Structured Data Announcements", url = "https://www.sec.gov/structureddata/article/announcement.rss", authority = "primary" },
+
+  # Competition / consumer / business regulation.
+  { name = "FTC — Press Releases", url = "https://www.ftc.gov/feeds/press-release.xml", authority = "primary" },
+  { name = "FTC — Consumer Protection", url = "https://www.ftc.gov/feeds/press-release-consumer-protection.xml", authority = "primary" },
+  { name = "FTC — Competition", url = "https://www.ftc.gov/feeds/press-release-competition.xml", authority = "primary" },
+  { name = "FTC — Business Blog", url = "https://www.ftc.gov/feeds/business-blog-gd.xml", authority = "primary" },
+  { name = "FTC — Inspector General", url = "https://www.ftc.gov/feeds/oig-reports-press-releases.xml", authority = "primary" },
+
+  # Technology / infrastructure / open-source weak and primary signals.
+  { name = "GitHub Blog", url = "https://github.blog/feed/", authority = "primary" },
+  { name = "GitHub Changelog", url = "https://github.blog/changelog/feed/", authority = "primary" },
+  { name = "Cloudflare Blog", url = "https://blog.cloudflare.com/rss/", authority = "primary" },
+  { name = "Kubernetes Blog", url = "https://kubernetes.io/feed.xml", authority = "primary" },
+  { name = "Rust Blog", url = "https://blog.rust-lang.org/feed.xml", authority = "primary" },
+  { name = "Python Insider", url = "https://blog.python.org/feeds/posts/default?alt=rss", authority = "primary" },
+  { name = "NIST News", url = "https://www.nist.gov/news-events/news/rss.xml", authority = "primary" },
+]
+
+# Public Greenhouse Job Board API seeds.
+# Tokens below were verified to return public job-board JSON on 2026-09-27.
+# Hiring changes are treated as strategic weak signals, not as proof of strategy.
 [sources.greenhouse]
 enabled = true
-boards = []
-# boards = [{ name = "Example", token = "example" }]
+boards = [
+  { name = "Figma", token = "figma" },
+  { name = "Coinbase", token = "coinbase" },
+  { name = "Scale AI", token = "scaleai" },
+  { name = "Airtable", token = "airtable" },
+  { name = "Dropbox", token = "dropbox" },
+  { name = "Klaviyo", token = "klaviyo" },
+  { name = "Vercel", token = "vercel" },
+  { name = "xAI", token = "xai" },
+  { name = "Upstart", token = "upstart" },
+  { name = "Intercom", token = "intercom" },
+]
 
-# SEC is registered when SEC_USER_AGENT is set in .env.
+# SEC API adapter is registered when SEC_USER_AGENT is set in .env.
+# The RSS feeds above provide partial SEC coverage even without this optional adapter.
 [sources.sec]
 enabled = true
 
