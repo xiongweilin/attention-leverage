@@ -77,7 +77,7 @@ class SourceTransport:
                         continue
                 return response
 
-            # Direct routing is a route fallback for transport failures only.
+            # Direct routing 只作为 transport failure 的路由回退。
             if route_index + 1 < len(routes) and last_error is not None:
                 continue
             if last_error is not None:
