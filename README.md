@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/xiongweilin/attention-leverage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/xiongweilin/attention-leverage/actions/workflows/ci.yml)
 [![SonarQube Cloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=coverage)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=metratio_attention-leverage&metric=coverage)](https://sonarcloud.io/summary/new_code?id=metratio_attention-leverage) [![Docs: EN / 中文](https://img.shields.io/badge/docs-EN%20%7C%20%E4%B8%AD%E6%96%87-blue.svg)](README.zh-CN.md)
+
+[English](README.md) | [简体中文](README.zh-CN.md)
 
 > Expand machine observation. Shrink human attention load. Preserve the ability to notice that your model of the world is becoming stale.
 
