@@ -15,45 +15,56 @@ from .environment import (
     GrantsGovSource, OpenAlexAuthorsSource, OpenAlexInstitutionsSource,
     ProPublicaNonprofitsSource, WikidataSource,
 )
+from .transport import SourceTransport, SourceTransportPolicy
 
 
-def build_sources(client: httpx.AsyncClient, settings: Settings) -> dict[str, Source]:
+def build_sources(
+    client: httpx.AsyncClient,
+    settings: Settings,
+    direct_client: httpx.AsyncClient | None = None,
+) -> dict[str, Source]:
     cfg = settings.source_config.get('sources', {})
     feeds = cfg.get('rss', {}).get('feeds', [])
     boards = cfg.get('greenhouse', {}).get('boards', [])
+
+    def source_client(name: str) -> SourceTransport:
+        source_cfg = cfg.get(name, {})
+        policy = SourceTransportPolicy.from_config(source_cfg.get('transport'))
+        return SourceTransport(name, client, direct_client, policy)
+
     candidates: dict[str, Source] = {
-        'google_news': GoogleNewsSource(client),
-        'gdelt': GDELTSource(client),
-        'hackernews': HackerNewsSource(client),
-        'bluesky': BlueskySource(client),
-        'github': GitHubSource(client, settings.github_token),
-        'npm': NpmSource(client),
-        'crates': CratesSource(client),
-        'stackexchange': StackExchangeSource(client),
-        'openalex': OpenAlexSource(client),
-        'arxiv': ArxivSource(client),
-        'crossref': CrossrefSource(client),
-        'europepmc': EuropePMCSource(client),
-        'clinicaltrials': ClinicalTrialsSource(client),
-        'federal_register': FederalRegisterSource(client),
-        'worldbank': WorldBankSource(client),
-        'cisa_kev': CisaKevSource(client),
-        'nvd': NvdSource(client, settings.nvd_api_key),
-        'usgs': UsgsSource(client),
-        'nasa_eonet': NasaEonetSource(client),
-        'wikidata': WikidataSource(client),
-        'openalex_authors': OpenAlexAuthorsSource(client),
-        'openalex_institutions': OpenAlexInstitutionsSource(client),
-        'propublica_nonprofits': ProPublicaNonprofitsSource(client),
-        'grants_gov': GrantsGovSource(client),
-        'rss': RSSSource(client, feeds),
+        'google_news': GoogleNewsSource(source_client('google_news')),
+        'gdelt': GDELTSource(source_client('gdelt')),
+        'hackernews': HackerNewsSource(source_client('hackernews')),
+        'bluesky': BlueskySource(source_client('bluesky')),
+        'github': GitHubSource(source_client('github'), settings.github_token),
+        'npm': NpmSource(source_client('npm')),
+        'crates': CratesSource(source_client('crates')),
+        'stackexchange': StackExchangeSource(source_client('stackexchange')),
+        'openalex': OpenAlexSource(source_client('openalex')),
+        'arxiv': ArxivSource(source_client('arxiv')),
+        'crossref': CrossrefSource(source_client('crossref')),
+        'europepmc': EuropePMCSource(source_client('europepmc')),
+        'clinicaltrials': ClinicalTrialsSource(source_client('clinicaltrials')),
+        'federal_register': FederalRegisterSource(source_client('federal_register')),
+        'worldbank': WorldBankSource(source_client('worldbank')),
+        'cisa_kev': CisaKevSource(source_client('cisa_kev')),
+        'nvd': NvdSource(source_client('nvd'), settings.nvd_api_key),
+        'usgs': UsgsSource(source_client('usgs')),
+        'nasa_eonet': NasaEonetSource(source_client('nasa_eonet')),
+        'wikidata': WikidataSource(source_client('wikidata')),
+        'openalex_authors': OpenAlexAuthorsSource(source_client('openalex_authors')),
+        'openalex_institutions': OpenAlexInstitutionsSource(source_client('openalex_institutions')),
+        'propublica_nonprofits': ProPublicaNonprofitsSource(source_client('propublica_nonprofits')),
+        'grants_gov': GrantsGovSource(source_client('grants_gov')),
+        'rss': RSSSource(source_client('rss'), feeds),
     }
     if settings.sec_user_agent:
-        candidates['sec'] = SECSource(client, settings.sec_user_agent)
+        candidates['sec'] = SECSource(source_client('sec'), settings.sec_user_agent)
     if settings.reliefweb_appname:
-        candidates['reliefweb'] = ReliefWebSource(client, settings.reliefweb_appname)
+        candidates['reliefweb'] = ReliefWebSource(source_client('reliefweb'), settings.reliefweb_appname)
     if boards:
-        candidates['greenhouse'] = GreenhouseSource(client, boards)
+        candidates['greenhouse'] = GreenhouseSource(source_client('greenhouse'), boards)
 
     return {
         name: source for name, source in candidates.items()

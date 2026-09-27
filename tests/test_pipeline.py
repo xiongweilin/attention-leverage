@@ -74,7 +74,7 @@ async def test_pipeline_gathers_sources_records_failures_coverage_and_persists(t
     assert len(result.items) == 1
     assert result.source_counts == {'good': 1}
     assert result.cognitive_map.next_explorations
-    assert 'RuntimeError: offline' in result.source_errors['bad']
+    assert result.source_errors['bad'] == 'RuntimeError'
     assert store.get_run(result.run_id)['digest']['headline'] == 'One material change'
     health = {row['source']: row for row in store.health()}
     assert health['good']['successes'] == 1
@@ -84,6 +84,63 @@ async def test_pipeline_gathers_sources_records_failures_coverage_and_persists(t
     assert coverage['release']['results'] == 2
     assert coverage['news']['searches'] == 1
     assert coverage['news']['results'] == 0
+
+
+async def test_pipeline_uses_configured_fallback_for_transport_failure(tmp_path, monkeypatch):
+    import httpx
+    import app.pipeline as pipeline_module
+
+    class TimedOutSource:
+        profile = SourceProfile(name='gdelt', category='global_news', description='global news')
+
+        async def search(self, query, horizon_hours):
+            raise httpx.ConnectTimeout('timeout')
+
+    class FallbackSource:
+        profile = SourceProfile(name='google_news', category='news', description='news')
+
+        async def search(self, query, horizon_hours):
+            return [RawItem(
+                id='fallback-1', source='google_news', source_category='news',
+                title='News result', url='https://example.test/news',
+            )]
+
+    monkeypatch.setattr(pipeline_module, 'build_sources', lambda *args: {
+        'gdelt': TimedOutSource(), 'google_news': FallbackSource(),
+    })
+    settings = Settings(
+        database_path=str(tmp_path / 'fallback.db'),
+        source_config={'sources': {'gdelt': {'fallback_source': 'google_news'}}},
+    )
+    store = Store(settings.database_path)
+    pipeline = AttentionPipeline(object(), settings, store)
+
+    class FallbackPlanner:
+        async def plan(self, goal, horizon_hours, cognitive_context):
+            return QueryPlan(
+                goal=goal, horizon_hours=24,
+                source_queries=[SourceQuery(
+                    source='gdelt', query='agent', mode='verification',
+                )],
+            ), False
+
+    class EmptyScreener:
+        async def screen(self, plan, candidates, cognitive_context):
+            return Digest(headline='Fallback was used'), CognitiveMap(), [], False
+
+    pipeline.planner = FallbackPlanner()
+    pipeline.screener = EmptyScreener()
+    result = await pipeline.run(RunRequest(input='watch agent', horizon_hours=24))
+
+    assert result.source_counts == {'google_news': 1}
+    assert result.source_errors == {'gdelt': 'ConnectTimeout'}
+    coverage = {row['category']: row for row in store.coverage()}
+    assert coverage['global_news']['results'] == 0
+    assert coverage['news']['results'] == 1
+    health = {row['source']: row for row in store.health()}
+    assert health['gdelt']['current_status'] == 'error'
+    assert health['gdelt']['last_failure_type'] == 'timeout'
+    assert health['google_news']['current_status'] == 'ok'
 
 
 async def test_pipeline_with_no_planned_queries_returns_empty_result(tmp_path, monkeypatch):

@@ -85,7 +85,12 @@ class Store:
                 failures INTEGER NOT NULL DEFAULT 0,
                 last_ok TEXT,
                 last_error TEXT,
-                last_error_at TEXT
+                last_error_at TEXT,
+                current_status TEXT NOT NULL DEFAULT 'unknown',
+                last_attempt_at TEXT,
+                last_failure_type TEXT NOT NULL DEFAULT '',
+                last_http_status INTEGER,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS query_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,6 +129,31 @@ class Store:
             ''')
             self._ensure_column(db, 'items', 'source_category', "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(db, 'items', 'last_query', "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(db, 'source_health', 'current_status', "TEXT NOT NULL DEFAULT 'unknown'")
+            self._ensure_column(db, 'source_health', 'last_attempt_at', 'TEXT')
+            self._ensure_column(db, 'source_health', 'last_failure_type', "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(db, 'source_health', 'last_http_status', 'INTEGER')
+            self._ensure_column(db, 'source_health', 'consecutive_failures', 'INTEGER NOT NULL DEFAULT 0')
+            db.execute("""
+                UPDATE source_health
+                SET current_status=CASE
+                    WHEN last_ok IS NOT NULL AND (last_error_at IS NULL OR last_ok >= last_error_at)
+                        THEN 'ok'
+                    WHEN last_error_at IS NOT NULL THEN 'error'
+                    ELSE 'unknown'
+                END,
+                last_attempt_at=CASE
+                    WHEN last_ok IS NULL THEN last_error_at
+                    WHEN last_error_at IS NULL THEN last_ok
+                    WHEN last_ok >= last_error_at THEN last_ok
+                    ELSE last_error_at
+                END,
+                last_failure_type=CASE
+                    WHEN last_error_at IS NOT NULL AND last_failure_type='' THEN 'legacy'
+                    ELSE last_failure_type
+                END
+                WHERE current_status='unknown'
+            """)
 
     @staticmethod
     def _ensure_column(db: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
@@ -159,16 +189,29 @@ class Store:
             weights[row['source']] = max(0.75, min(1.25, 0.75 + 0.5 * ratio))
         return weights
 
-    def record_source_health(self, source: str, ok: bool, error: str = '') -> None:
+    def record_source_health(
+        self,
+        source: str,
+        ok: bool,
+        error: str = '',
+        failure_type: str = '',
+        http_status: int | None = None,
+    ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connection() as db:
             db.execute('INSERT OR IGNORE INTO source_health(source) VALUES(?)', (source,))
             if ok:
-                db.execute('UPDATE source_health SET successes=successes+1,last_ok=? WHERE source=?', (now, source))
+                db.execute(
+                    "UPDATE source_health SET successes=successes+1,last_ok=?,last_attempt_at=?,"
+                    "current_status='ok',consecutive_failures=0 WHERE source=?",
+                    (now, now, source),
+                )
             else:
                 db.execute(
-                    'UPDATE source_health SET failures=failures+1,last_error=?,last_error_at=? WHERE source=?',
-                    (error[:1000], now, source),
+                    "UPDATE source_health SET failures=failures+1,last_error=?,last_error_at=?,"
+                    "last_attempt_at=?,current_status='error',last_failure_type=?,last_http_status=?,"
+                    'consecutive_failures=consecutive_failures+1 WHERE source=?',
+                    (error[:200], now, now, failure_type[:64], http_status, source),
                 )
 
     def observe_items(self, items: list[RawItem]) -> None:

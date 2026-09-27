@@ -127,6 +127,9 @@ def test_clinical_trials_regulatory_and_sec_adapters():
         'conditionsModule':{'conditions':['condition']},'armsInterventionsModule':{'interventions':[{'name':'drug'}]},
     }}]})))
     trial_item = asyncio_run(trial.search(query(trial), 24))[0]
+    fields = trial.client.calls[0][2]['params']['fields']
+    assert 'InterventionName' in fields and 'Phase' in fields
+    assert 'Interventions' not in fields and 'Phases' not in fields
     assert trial_item.metadata['status'] == 'RECRUITING'
     assert trial_item.metadata['interventions'] == 'drug'
 

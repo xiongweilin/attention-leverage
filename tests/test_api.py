@@ -15,7 +15,7 @@ def test_http_api_routes_use_pipeline_and_store(tmp_path, monkeypatch):
     profile = SourceProfile(name='stub', category='test', description='test source')
 
     class FakePipeline:
-        def __init__(self, client, settings, store):
+        def __init__(self, client, settings, store, direct_client=None):
             self.store = store
             self.sources = {'stub': object()}
             self.profiles = {'stub': profile}
@@ -48,6 +48,7 @@ def test_http_api_routes_use_pipeline_and_store(tmp_path, monkeypatch):
         assert health['llm_configured'] is True
         source_data = client.get('/api/sources').json()
         assert source_data['sources'][0]['health']['successes'] == 1
+        assert source_data['sources'][0]['health']['current_status'] == 'ok'
         assert client.get('/api/history?limit=0').json()['runs'] == []
 
         run_response = client.post('/api/run', json={'input':'watch agent releases','horizon_hours':24})

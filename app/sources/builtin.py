@@ -171,7 +171,7 @@ class EuropePMCSource(Source):
 class ClinicalTrialsSource(Source):
     profile = profile('clinicaltrials','clinical_trials','ClinicalTrials.gov study registry for trial status and intervention signals.','primary',True,'clinical_trial')
     async def search(self, query, horizon_hours):
-        fields='NCTId,BriefTitle,OverallStatus,LastUpdatePostDate,Conditions,Interventions,Phases,BriefSummary'
+        fields='NCTId,BriefTitle,OverallStatus,LastUpdatePostDate,Condition,InterventionName,Phase,BriefSummary'
         params={'format':'json','pageSize':query.limit,'query.term':query.query,'fields':fields,'sort':'LastUpdatePostDate:desc'}
         r=await self.client.get('https://clinicaltrials.gov/api/v2/studies',params=params); r.raise_for_status(); out=[]
         for s in r.json().get('studies',[])[:query.limit]:

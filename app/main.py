@@ -23,8 +23,13 @@ async def lifespan(app: FastAPI):
         timeout=settings.request_timeout_seconds,
         follow_redirects=True,
         headers={'User-Agent': 'attention-leverage/0.4 (+https://github.com/xiongweilin/attention-leverage)'},
-    ) as client:
-        app.state.pipeline = AttentionPipeline(client, settings, store)
+    ) as client, httpx.AsyncClient(
+        timeout=settings.request_timeout_seconds,
+        follow_redirects=True,
+        headers={'User-Agent': 'attention-leverage/0.4 (+https://github.com/xiongweilin/attention-leverage)'},
+        trust_env=False,
+    ) as direct_client:
+        app.state.pipeline = AttentionPipeline(client, settings, store, direct_client=direct_client)
         yield
 
 

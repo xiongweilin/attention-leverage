@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 from app.models import (
     AssumptionInput, CognitiveMap, Digest, EnvironmentInsight, FeedbackRequest,
@@ -34,10 +35,20 @@ def test_store_weights_health_run_history_and_goal_deletion(tmp_path: Path):
     assert 'small-sample' not in weights
 
     store.record_source_health('feed', True)
-    store.record_source_health('feed', False, 'temporary error')
+    store.record_source_health('feed', False, 'HTTP 403', 'http_error', 403)
     health = store.health()[0]
     assert (health['successes'], health['failures']) == (1, 1)
-    assert health['last_error'] == 'temporary error'
+    assert health['current_status'] == 'error'
+    assert health['last_failure_type'] == 'http_error'
+    assert health['last_http_status'] == 403
+    assert health['consecutive_failures'] == 1
+    store.record_source_health('feed', True)
+    health = store.health()[0]
+    assert health['current_status'] == 'ok'
+    assert health['consecutive_failures'] == 0
+    assert health['last_error'] == 'HTTP 403'
+    assert health['last_failure_type'] == 'http_error'
+    assert health['last_attempt_at'] == health['last_ok']
 
     result = RunResult(
         run_id='run-1', plan=QueryPlan(goal='watch agents'), digest=Digest(headline='A change'),
@@ -112,3 +123,34 @@ def test_store_tracks_query_coverage_assumptions_and_environments(tmp_path: Path
 
     store.delete_assumption(assumption.id)
     assert store.list_assumptions() == []
+
+
+def test_store_migrates_legacy_source_health_to_latest_known_status(tmp_path: Path):
+    database = tmp_path / 'legacy-health.db'
+    with sqlite3.connect(database) as db:
+        db.execute('''
+            CREATE TABLE source_health (
+                source TEXT PRIMARY KEY,
+                successes INTEGER NOT NULL DEFAULT 0,
+                failures INTEGER NOT NULL DEFAULT 0,
+                last_ok TEXT,
+                last_error TEXT,
+                last_error_at TEXT
+            )
+        ''')
+        db.executemany(
+            'INSERT INTO source_health(source,successes,failures,last_ok,last_error,last_error_at) '
+            'VALUES(?,?,?,?,?,?)',
+            [
+                ('recovered', 3, 1, '2026-09-27T11:00:00+00:00', 'old error', '2026-09-27T10:00:00+00:00'),
+                ('failing', 1, 2, '2026-09-27T10:00:00+00:00', 'latest error', '2026-09-27T11:00:00+00:00'),
+            ],
+        )
+
+    health = {row['source']: row for row in Store(str(database)).health()}
+    assert health['recovered']['current_status'] == 'ok'
+    assert health['recovered']['last_attempt_at'] == health['recovered']['last_ok']
+    assert health['recovered']['last_failure_type'] == 'legacy'
+    assert health['failing']['current_status'] == 'error'
+    assert health['failing']['last_attempt_at'] == health['failing']['last_error_at']
+    assert health['failing']['last_failure_type'] == 'legacy'

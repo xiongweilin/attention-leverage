@@ -19,8 +19,13 @@ async def _run(args) -> int:
         timeout=settings.request_timeout_seconds,
         follow_redirects=True,
         headers={'User-Agent':'attention-leverage/0.4 (+https://github.com/xiongweilin/attention-leverage)'},
-    ) as client:
-        pipeline = AttentionPipeline(client, settings, store)
+    ) as client, httpx.AsyncClient(
+        timeout=settings.request_timeout_seconds,
+        follow_redirects=True,
+        headers={'User-Agent':'attention-leverage/0.4 (+https://github.com/xiongweilin/attention-leverage)'},
+        trust_env=False,
+    ) as direct_client:
+        pipeline = AttentionPipeline(client, settings, store, direct_client=direct_client)
         for prompt in prompts:
             result = await pipeline.run(RunRequest(input=prompt, horizon_hours=args.horizon))
             _print_result(result, args)

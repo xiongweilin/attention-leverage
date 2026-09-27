@@ -13,15 +13,26 @@ from .models import RunRequest, RunResult
 from .planner import GoalPlanner
 from .screening import SemanticScreener
 from .sources import build_sources
+from .sources.transport import classify_source_error
 from .store import Store
 
 
 class AttentionPipeline:
-    def __init__(self, client: httpx.AsyncClient, settings: Settings, store: Store):
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        settings: Settings,
+        store: Store,
+        direct_client: httpx.AsyncClient | None = None,
+    ):
         self.client = client
         self.settings = settings
         self.store = store
-        self.sources = build_sources(client, settings)
+        self.sources = (
+            build_sources(client, settings)
+            if direct_client is None
+            else build_sources(client, settings, direct_client)
+        )
         self.profiles = {name: source.profile for name, source in self.sources.items()}
         self.llm = OpenAICompatibleLLM(client, settings)
         self.planner = GoalPlanner(self.llm, self.profiles)
@@ -46,7 +57,7 @@ class AttentionPipeline:
         raw = []
         errors: dict[str, str] = {}
         query_events: list[dict] = []
-        for query, items, error in results:
+        for query, items, error, fallback_result in results:
             raw.extend(items)
             if error:
                 errors[query.source] = error
@@ -57,9 +68,23 @@ class AttentionPipeline:
                 'query': query.query,
                 'purpose': query.purpose,
                 'mode': query.mode,
-                'result_count': len(items),
+                'result_count': 0 if error else len(items),
                 'ok': not bool(error),
             })
+            if fallback_result:
+                fallback_query, fallback_count, fallback_error = fallback_result
+                fallback_profile = self.profiles[fallback_query.source]
+                query_events.append({
+                    'source': fallback_query.source,
+                    'category': fallback_profile.category,
+                    'query': fallback_query.query,
+                    'purpose': fallback_query.purpose,
+                    'mode': fallback_query.mode,
+                    'result_count': fallback_count,
+                    'ok': not bool(fallback_error),
+                })
+                if fallback_error:
+                    errors[fallback_query.source] = fallback_error
         self.store.record_query_events(run_id, query_events)
 
         raw = balanced_cap(raw, self.settings.max_raw_items)
@@ -107,8 +132,34 @@ class AttentionPipeline:
             try:
                 items = await source.search(query, horizon_hours)
                 self.store.record_source_health(query.source, True)
-                return query, items, ''
+                return query, items, '', None
             except Exception as exc:
-                error = f'{type(exc).__name__}: {exc}'
-                self.store.record_source_health(query.source, False, error)
-                return query, [], error
+                failure_type, http_status, error = classify_source_error(exc)
+                self.store.record_source_health(
+                    query.source, False, error, failure_type, http_status,
+                )
+                fallback_name = (
+                    self.settings.source_config.get('sources', {})
+                    .get(query.source, {}).get('fallback_source', '')
+                )
+                if (
+                    failure_type not in {'timeout', 'connect_error', 'transport_error', 'server_error'}
+                    or not fallback_name
+                    or fallback_name == query.source
+                    or fallback_name not in self.sources
+                ):
+                    return query, [], error, None
+
+                fallback_query = query.model_copy(update={'source': fallback_name})
+                try:
+                    fallback_items = await self.sources[fallback_name].search(
+                        fallback_query, horizon_hours,
+                    )
+                    self.store.record_source_health(fallback_name, True)
+                    return query, fallback_items, error, (fallback_query, len(fallback_items), '')
+                except Exception as fallback_exc:
+                    fallback_type, fallback_status, fallback_error = classify_source_error(fallback_exc)
+                    self.store.record_source_health(
+                        fallback_name, False, fallback_error, fallback_type, fallback_status,
+                    )
+                    return query, [], error, (fallback_query, 0, fallback_error)

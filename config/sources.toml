@@ -1,8 +1,13 @@
 # Built-in source switches. Sources requiring credentials/config are registered only when configured.
+# Optional per-source transport settings live under [sources.NAME.transport]:
+# mode = "system" | "direct" | "system_then_direct"
+# min_interval_seconds, max_attempts and backoff_seconds control request pacing/retries.
+# Retries cover transport errors, HTTP 429 and 5xx; source fallback is limited to transport errors and 5xx.
 [sources.google_news]
 enabled = true
 [sources.gdelt]
 enabled = true
+fallback_source = "google_news"
 [sources.hackernews]
 enabled = true
 [sources.bluesky]
@@ -19,6 +24,10 @@ enabled = true
 enabled = true
 [sources.arxiv]
 enabled = true
+[sources.arxiv.transport]
+min_interval_seconds = 3
+max_attempts = 3
+backoff_seconds = 1
 [sources.crossref]
 enabled = true
 [sources.europepmc]
