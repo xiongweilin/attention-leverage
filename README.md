@@ -99,10 +99,10 @@ The default pool now includes 25+ built-in public sources spanning different inf
 | Structured entities | Wikidata |
 | Foundations / associations / nonprofits | ProPublica Nonprofit Explorer |
 | Grants / fellowships / opportunity timing | Grants.gov |
-| Long-tail official/niche environments | configurable RSS/Atom |
+| Long-tail official/niche environments | 24 seeded RSS/Atom feeds + configurable additions |
+| Hiring / strategic weak signals | 10 seeded public Greenhouse boards + configurable additions |
 | Optional corporate disclosure | SEC EDGAR (`SEC_USER_AGENT`) |
 | Optional humanitarian reporting | ReliefWeb (`RELIEFWEB_APPNAME`) |
-| Optional target-company hiring | configured Greenhouse public job boards |
 
 Ten news outlets repeating the same story are not treated as ten distinct information mechanisms.
 
@@ -223,7 +223,7 @@ Scheduling remains outside the semantic core: cron, systemd timers, GitHub Actio
 
 ## Adding long-tail environments
 
-Use `config/sources.toml` for schools, associations, foundations, conferences, company changelogs, alumni organizations and other public RSS/Atom sources:
+The repository ships with 24 verified public RSS/Atom feeds across the Federal Reserve, BIS, SEC, FTC, GitHub, Cloudflare, Kubernetes, Rust, Python and NIST. Use `config/sources.toml` to add schools, associations, foundations, conferences, company changelogs, alumni organizations and other public feeds:
 
 ```toml
 [sources.rss]
@@ -234,7 +234,7 @@ feeds = [
 ]
 ```
 
-Configured Greenhouse boards can provide target-company hiring signals:
+The repository also ships with 10 public Greenhouse boards (Figma, Coinbase, Scale AI, Airtable, Dropbox, Klaviyo, Vercel, xAI, Upstart and Intercom). Add or replace boards in the same config:
 
 ```toml
 [sources.greenhouse]
